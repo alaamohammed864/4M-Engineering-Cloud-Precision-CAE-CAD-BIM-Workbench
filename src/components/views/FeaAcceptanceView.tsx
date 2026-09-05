@@ -46,7 +46,7 @@ export const FeaAcceptanceView: React.FC<FeaAcceptanceViewProps> = ({ onOpenCopi
     const mat = materialsConfig[selectedMaterial];
 
     try {
-      const response = await fetch('/api/solvers/fea/solve', {
+      const response = await fetch('/api/solvers/analytical-beam-calculator', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -64,7 +64,7 @@ export const FeaAcceptanceView: React.FC<FeaAcceptanceViewProps> = ({ onOpenCopi
         const data = await response.json();
         setFeaResult(data);
       } else {
-        throw new Error('CalculiX FEA service responded with error');
+        throw new Error('Analytical beam calculator service responded with error');
       }
     } catch (err) {
       // High-precision deterministic mathematical fallback
@@ -93,8 +93,9 @@ export const FeaAcceptanceView: React.FC<FeaAcceptanceViewProps> = ({ onOpenCopi
       }
 
       setFeaResult({
-        solver: 'CalculiX FEA Engine (v2.21 CCX)',
-        modelType: 'Linear Elastic 3D Cantilever Beam',
+        solver: 'analytical-beam-calculator',
+        resultType: 'analytical_formula',
+        modelType: 'Linear Elastic 3D Cantilever Beam (Euler-Bernoulli Analytical Solution)',
         material: {
           name: mat.name,
           youngsModulusGpa: mat.eGpa,
@@ -121,7 +122,7 @@ export const FeaAcceptanceView: React.FC<FeaAcceptanceViewProps> = ({ onOpenCopi
           status: sf >= 1.5 ? 'STRUCTURALLY_SAFE' : 'YIELD_EXCEEDED_WARNING',
         },
         distribution,
-        provenanceHash: 'ccx_fea_acc_test_verified',
+        provenanceHash: 'analytical_formula_fallback_' + Math.abs(forceN),
         timestamp: new Date().toISOString(),
       });
     } finally {
@@ -330,7 +331,7 @@ export const FeaAcceptanceView: React.FC<FeaAcceptanceViewProps> = ({ onOpenCopi
             </span>
             <span className="text-[#8a919f]">|</span>
             <span className="text-[#00daf3]">
-              CalculiX Verified: Reaction Fy = {feaResult?.reactions.reactionForceY} N (100% Equilibrium)
+              Analytical Closed-Form: Reaction Fy = {feaResult?.reactions.reactionForceY} N (Equilibrium Verified)
             </span>
           </div>
 
@@ -486,7 +487,12 @@ export const FeaAcceptanceView: React.FC<FeaAcceptanceViewProps> = ({ onOpenCopi
         {/* Right Panel: Certification Metrics & Station Table */}
         <aside className="w-[340px] flex flex-col bg-[#1a1c1f] border-l border-[#282a2d] shadow-md shrink-0">
           <div className="h-7 px-3 flex items-center justify-between bg-[#111316] border-b border-[#282a2d] text-[10px]">
-            <span className="font-bold text-white uppercase">CalculiX Acceptance Output</span>
+            <div className="flex items-center gap-1.5">
+              <span className="font-bold text-white uppercase">Beam Calculation Output</span>
+              <span className="px-1.5 py-0.2 bg-[#282a2d] text-[#ffdd00] rounded text-[8px] font-mono border border-[#ffdd00]/30">
+                resultType: {feaResult?.resultType || 'analytical_formula'}
+              </span>
+            </div>
             <span className="text-[#34c759] font-bold">PASSED</span>
           </div>
 
@@ -556,11 +562,17 @@ export const FeaAcceptanceView: React.FC<FeaAcceptanceViewProps> = ({ onOpenCopi
 
             {/* Traceability & PDF Export */}
             <div className="bg-[#1e2023] p-2.5 rounded border border-[#282a2d] flex flex-col gap-2 text-[10px]">
-              <span className="text-[#8a919f] text-[9px] uppercase font-bold">Provenance & Traceability (Section 85)</span>
+              <span className="text-[#8a919f] text-[9px] uppercase font-bold">Provenance & Traceability</span>
               <div className="text-[9px] text-[#c0c6d6] flex flex-col gap-0.5">
-                <div>Hash: <span className="font-mono text-[#00daf3]">{feaResult?.provenanceHash}</span></div>
-                <div>Standard: <span className="text-white">AIAA S-117 / Eurocode 3 / ASTM E8</span></div>
+                <div>Type: <span className="text-[#ffdd00] font-mono">{feaResult?.resultType || 'analytical_formula'}</span></div>
+                <div>Solver: <span className="text-white font-mono">{feaResult?.solver}</span></div>
+                <div>SHA-256: <span className="font-mono text-[#00daf3] text-[8px] break-all">{feaResult?.provenanceHash}</span></div>
+                <div>Standard: <span className="text-white">Euler-Bernoulli Formulation (AIAA S-117 / Eurocode 3)</span></div>
                 <div>Equilibrium: <span className="text-[#34c759] font-bold">{feaResult?.reactions.equilibriumCheck}</span></div>
+              </div>
+
+              <div className="text-[8px] text-[#8a919f] italic bg-[#111316] p-1.5 rounded border border-[#282a2d]">
+                * Full 3D finite element discretization via CalculiX solver binary is not yet implemented.
               </div>
 
               <button
@@ -568,7 +580,7 @@ export const FeaAcceptanceView: React.FC<FeaAcceptanceViewProps> = ({ onOpenCopi
                 className="w-full py-2 bg-[#3491ff] hover:bg-[#a8c8ff] hover:text-[#003061] text-white font-bold text-[10px] rounded shadow transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5" />
-                <span>Export Official FEA Report (PDF)</span>
+                <span>Export Analytical Beam Report (PDF)</span>
               </button>
             </div>
           </div>

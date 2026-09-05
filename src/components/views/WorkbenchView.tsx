@@ -72,9 +72,9 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
               <span className="w-1.5 h-1.5 rounded-full bg-[#8a919f]" />
               Gmsh 4.11
             </span>
-            <span className="flex items-center gap-1 bg-[#111316] px-1.5 py-0.5 rounded border border-[#282a2d] text-[#a8c8ff]">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#3491ff]" />
-              OpenFOAM v2312 (Idle)
+            <span className="flex items-center gap-1 bg-[#111316] px-1.5 py-0.5 rounded border border-[#282a2d] text-[#8a919f]">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#8a919f]" />
+              OpenFOAM (Not yet implemented)
             </span>
           </div>
         </div>
@@ -769,21 +769,18 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
         <div className="flex-1 overflow-hidden p-2.5 bg-[#0c0e11] text-[11px]">
           {bottomTab === 'terminal' && (
             <div className="h-full overflow-y-auto flex flex-col gap-0.5 font-mono text-[10px] leading-relaxed text-[#c0c6d6]">
-              <div className="text-[#8a919f]">[00:00:01] Initializing OpenFOAM case file structure from geometry definition...</div>
-              <div className="text-white">[00:00:02] Loading mesh domain 'Aero_Foil_Transonic_Study.msh' via Gmsh 4.11...</div>
+              <div className="text-[#8a919f]">[00:00:01] Preparing numerical simulation setup (OpenFOAM solver binary is not yet implemented)...</div>
+              <div className="text-white">[00:00:02] Loading mesh domain 'Aero_Foil_Transonic_Study.msh' via Gmsh...</div>
               <div className="text-[#00daf3]">[00:00:03] Boundary tags confirmed: Inlet (104), Outlet (108), Wall (101, 102), Symmetry (105, 106)</div>
-              <div className="text-[#a8c8ff]">[00:00:04] Executing simpleFoam steady-state incompressible RANS solver...</div>
+              <div className="text-[#ffdd00]">[00:00:04] Note: Direct OpenFOAM solver integration is planned. Analytical fluid mechanics active.</div>
               <div className="text-white flex items-center gap-3">
-                <span>Iter 120 | Ux: 1.42e-04</span>
-                <span>Uy: 9.87e-05</span>
-                <span>p: 4.12e-04</span>
-                <span>k: 8.91e-05</span>
-                <span>omega: 7.22e-05</span>
-                <span className="text-[#00daf3] ml-auto">Continuity error: 2.11e-06</span>
+                <span>Domain: Re 3.2e+06</span>
+                <span>Swamee-Jain f: 0.0162</span>
+                <span>Continuity: 100% Mass Conserved</span>
               </div>
-              <div className="text-[#3491ff] flex items-center gap-1 animate-pulse">
+              <div className="text-[#3491ff] flex items-center gap-1">
                 <span className="w-1.5 h-1.5 bg-[#3491ff]" />
-                <span>[RUNNING] Iteration 121 in progress on 16 MPI ranks...</span>
+                <span>Analytical solution pipeline active. Native OpenFOAM daemon not yet connected.</span>
               </div>
             </div>
           )}

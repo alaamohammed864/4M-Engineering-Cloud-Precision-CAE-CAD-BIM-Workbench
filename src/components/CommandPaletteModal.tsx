@@ -65,8 +65,8 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
     },
     {
       id: 'cmd_fea_acc',
-      title: 'Acceptance Test 1: Real FEA Cantilever Beam',
-      subtitle: 'CalculiX structural analysis, Von Mises stress, tip deflection & safety factor (Section 82)',
+      title: 'Analytical Beam Calculator (Euler-Bernoulli)',
+      subtitle: 'Analytical closed-form beam calculation; CalculiX FEM solver integration is planned',
       icon: Cpu,
       category: 'TESTING',
       action: () => {
@@ -76,8 +76,8 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
     },
     {
       id: 'cmd_cfd_acc',
-      title: 'Acceptance Test 2: Real CFD Pipe & Airfoil Flow',
-      subtitle: 'OpenFOAM RANS, pressure loss, Darcy friction factor & velocity profiles (Section 83)',
+      title: 'Analytical Pipe Flow Calculator (Darcy-Weisbach)',
+      subtitle: 'Analytical pipe flow calculation; OpenFOAM CFD solver integration is planned',
       icon: Zap,
       category: 'TESTING',
       action: () => {

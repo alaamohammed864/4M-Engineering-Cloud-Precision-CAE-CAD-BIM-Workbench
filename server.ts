@@ -2,6 +2,7 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
+import crypto from 'crypto';
 import { GoogleGenAI } from '@google/genai';
 
 dotenv.config();
@@ -39,7 +40,7 @@ const mockProjects = [
     id: 'proj_fea_cantilever',
     name: 'Acceptance Test — Cantilever Beam FEA',
     type: 'FEA',
-    description: 'CalculiX structural analysis of a 1.0m steel cantilever under 10kN tip load',
+    description: 'Analytical beam calculation of a 1.0m steel cantilever under 10kN tip load (CalculiX integration not yet implemented)',
     lastModified: '2026-09-04T22:30:00Z',
     status: 'Ready',
     meshCount: '12,450 Tet10 Elements',
@@ -49,7 +50,7 @@ const mockProjects = [
     id: 'proj_cfd_pipe',
     name: 'Acceptance Test — Internal Pipe Flow CFD',
     type: 'CFD',
-    description: 'OpenFOAM RANS simulation of turbulent water flow through DN100 pipe',
+    description: 'Analytical pipe flow calculation of turbulent water flow through DN100 pipe (OpenFOAM integration not yet implemented)',
     lastModified: '2026-09-04T21:15:00Z',
     status: 'Converged',
     meshCount: '84,200 Poly-Hex Elements',
@@ -101,13 +102,13 @@ app.post('/api/simulations/:id/validate', (req, res) => {
       });
     }
 
-    // Check material Young\'s modulus and Poisson ratio
+    // Check material Young's modulus and Poisson ratio
     if (!material?.youngsModulus || material?.youngsModulus <= 0) {
       messages.push({
         level: 'ERROR',
         problem: 'Invalid or missing elastic modulus (E)',
         location: `Material: ${material?.name || 'Unassigned'}`,
-        reason: 'CalculiX requires positive Young\'s Modulus to assemble element stiffness matrices.',
+        reason: 'Structural stiffness matrix assembly requires positive Young\'s Modulus.',
         solution: 'Assign a valid structural material from the library (e.g. Steel E = 210 GPa).',
       });
     }
@@ -140,7 +141,7 @@ app.post('/api/simulations/:id/validate', (req, res) => {
         level: 'ERROR',
         problem: 'Missing fluid mass or velocity inlet',
         location: 'CFD Boundary Conditions',
-        reason: 'OpenFOAM requires at least one inflow condition for conservation of mass.',
+        reason: 'Conservation of mass requires at least one inflow condition.',
         solution: 'Assign a Velocity Inlet boundary to an external patch.',
       });
     }
@@ -161,7 +162,7 @@ app.post('/api/simulations/:id/validate', (req, res) => {
       problem: 'Viscous boundary layer inflation verified',
       location: 'Wall Patches',
       reason: 'First cell height yields estimated y+ ~ 1.05 matching SST k-omega turbulence requirements.',
-      solution: 'Ready to execute OpenFOAM simpleFoam.',
+      solution: 'Boundary conditions validated. Solver ready.',
     });
   }
 
@@ -174,8 +175,8 @@ app.post('/api/simulations/:id/validate', (req, res) => {
   });
 });
 
-// Real Numerical FEA Solver Engine (Section 82 Acceptance Test)
-app.post('/api/solvers/fea/solve', (req, res) => {
+// Analytical Beam Calculator (Euler-Bernoulli closed-form solution)
+const handleBeamCalculation = (req: express.Request, res: express.Response) => {
   const {
     length = 1.0, // meters (e.g. 1.0 m)
     width = 0.05, // meters (50 mm)
@@ -186,7 +187,18 @@ app.post('/api/solvers/fea/solve', (req, res) => {
     poissonRatio = 0.3,
   } = req.body;
 
-  // Real Structural Mechanics Analytical & Discretized Beam Solutions:
+  const inputConfig = {
+    length,
+    width,
+    height,
+    forceY,
+    youngsModulus,
+    yieldStrength,
+    poissonRatio,
+  };
+  const provenanceHash = crypto.createHash('sha256').update(JSON.stringify(inputConfig)).digest('hex');
+
+  // Closed-form Euler-Bernoulli beam formulas:
   // Moment of Inertia: I = (b * h^3) / 12
   const I = (width * Math.pow(height, 3)) / 12; // m^4
   // Section Modulus: Z = (b * h^2) / 6
@@ -235,8 +247,9 @@ app.post('/api/solvers/fea/solve', (req, res) => {
   }
 
   res.json({
-    solver: 'CalculiX FEA Engine (v2.21 CCX Equivalent)',
-    modelType: 'Linear Elastic 3D Cantilever Beam',
+    solver: 'analytical-beam-calculator',
+    resultType: 'analytical_formula',
+    modelType: 'Linear Elastic 3D Cantilever Beam (Euler-Bernoulli Analytical Solution)',
     material: {
       name: 'Structural Steel S355',
       youngsModulusGpa: youngsModulus / 1e9,
@@ -266,12 +279,15 @@ app.post('/api/solvers/fea/solve', (req, res) => {
     },
     distribution,
     timestamp: new Date().toISOString(),
-    provenanceHash: 'ccx_fea_' + Math.random().toString(36).substring(2, 10),
+    provenanceHash,
   });
-});
+};
 
-// Real Numerical CFD Solver Engine (Section 83 Acceptance Test)
-app.post('/api/solvers/cfd/solve', (req, res) => {
+app.post('/api/solvers/analytical-beam-calculator', handleBeamCalculation);
+app.post('/api/solvers/fea/solve', handleBeamCalculation);
+
+// Analytical Pipe Flow Calculator (Darcy-Weisbach / Swamee-Jain closed-form solution)
+const handlePipeFlowCalculation = (req: express.Request, res: express.Response) => {
   const {
     diameter = 0.1, // meters (DN100 = 100 mm)
     length = 5.0, // meters (5 m pipe)
@@ -281,7 +297,17 @@ app.post('/api/solvers/cfd/solve', (req, res) => {
     roughness = 0.000045, // m (Commercial steel pipe 0.045 mm)
   } = req.body;
 
-  // Real Fluid Mechanics Analytical & Discretized Pipe Flow Solutions:
+  const inputConfig = {
+    diameter,
+    length,
+    inletVelocity,
+    density,
+    dynamicViscosity,
+    roughness,
+  };
+  const provenanceHash = crypto.createHash('sha256').update(JSON.stringify(inputConfig)).digest('hex');
+
+  // Closed-form fluid mechanics equations:
   // Kinematic Viscosity: nu = mu / rho
   const kinematicViscosity = dynamicViscosity / density; // m²/s
   // Cross-sectional Area: A = pi * D^2 / 4
@@ -350,7 +376,8 @@ app.post('/api/solvers/cfd/solve', (req, res) => {
   }
 
   res.json({
-    solver: 'OpenFOAM CFD Engine (simpleFoam Steady-State RANS)',
+    solver: 'analytical-pipe-flow-calculator',
+    resultType: 'analytical_formula',
     flowRegime,
     fluid: {
       name: 'Water (Pure 20°C)',
@@ -374,9 +401,12 @@ app.post('/api/solvers/cfd/solve', (req, res) => {
     },
     velocityProfile,
     timestamp: new Date().toISOString(),
-    provenanceHash: 'foam_cfd_' + Math.random().toString(36).substring(2, 10),
+    provenanceHash,
   });
-});
+};
+
+app.post('/api/solvers/analytical-pipe-flow-calculator', handlePipeFlowCalculation);
+app.post('/api/solvers/cfd/solve', handlePipeFlowCalculation);
 
 // AI Engineering Copilot Endpoint
 app.post('/api/copilot', async (req, res) => {
@@ -385,40 +415,15 @@ app.post('/api/copilot', async (req, res) => {
     const client = getGeminiClient();
 
     if (!client) {
-      // Return high-fidelity deterministic engineering calculation response if API key is not configured
-      const simulatedResponses: Record<string, string> = {
-        'mesh': `### Mesh Quality & Boundary Layer Analysis
-- **Min Orthogonal Quality**: 0.72 (Target > 0.15) — **PASSED**
-- **Max Skewness**: 0.281 (Target < 0.85) — **OPTIMAL**
-- **Boundary Layer y+**: ~0.98 with first layer height 0.012 mm across 15 prism layers.
-- **Recommendation**: Prism aspect ratio near trailing edge reaches 8.4; ensure prism layer growth factor λ does not exceed 1.25 to prevent pressure jump discontinuities in viscous sublayer.`,
-        'hvac': `### HVAC & Thermal Load Calculation (ASHRAE 90.1 / ISO 52016)
-- **Calculated Cooling Load**: 42.8 kW (Sensible: 34.2 kW, Latent: 8.6 kW)
-- **Required Airflow**: 2,850 CFM (4,842 m³/h)
-- **Recommended Ductwork**: 450 mm × 350 mm rectangular supply duct (Velocity = 5.2 m/s, Friction = 0.82 Pa/m)
-- **Equipment Selection**: Variable Refrigerant Flow (VRF) or High-Efficiency Air Handling Unit with economizer cycle.`,
-        'solver': `### OpenFOAM simpleFoam Convergence Assessment
-- **Status**: Iteration 420/1000 — 42% complete.
-- **Residuals**: Ux = 8.41e-6, Uy = 4.18e-6, p = 1.23e-5, ω = 9.11e-5.
-- **Stability**: Continuity error is 1.2e-06 with Courant number mean = 0.42 (safe < 1.0 limit).
-- **Physical Validity**: Aerodynamic lift Cl has plateaued at 0.8420 ± 0.0004 with L/D ratio 7.846 matching NASA TM-4281 within 1.8%.`,
-      };
-
-      const fallback = simulatedResponses[module] || `### Engineering Analysis & Verification
-Based on the current CAD/BIM model and CFD parameters:
-- **Geometry & Constraints**: B-Rep solid body generated with 0 DOF fully constrained profiles.
-- **Simulation Status**: Converging smoothly with stable residuals below threshold (1.0e-5).
-- **Next Action**: Ready to commit study and export compiled ISO 9001 compliance report.`;
-
-      return res.json({
-        reply: fallback,
-        source: 'Engineering Rule Engine (Local)',
+      return res.status(503).json({
+        error: 'AI_NOT_CONFIGURED',
+        message: 'Set GEMINI_API_KEY to enable the AI copilot.',
       });
     }
 
     // Call real Gemini API
     const response = await client.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-flash-latest',
       contents: `You are the Senior Chief CAE/CFD/BIM Engineering Specialist inside 4M Engineering Cloud.
 Context: ${JSON.stringify(context || {})}
 Active Module: ${module || 'General'}

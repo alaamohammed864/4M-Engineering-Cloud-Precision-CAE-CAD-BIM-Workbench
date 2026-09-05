@@ -183,9 +183,9 @@ export const TopBar: React.FC<TopBarProps> = ({
         {[
           { id: 'workbench', label: isArabic ? 'بيئة العمل (3D CAD)' : 'CAD Workbench', icon: Box },
           { id: 'geometry-and-sketch', label: isArabic ? 'الرسم الهندسي (2D Sketch)' : '2D Sketcher', icon: Layers },
-          { id: 'fea-acceptance', label: isArabic ? 'اختبار FEA (CalculiX)' : 'FEA Test (CalculiX)', icon: Cpu },
+          { id: 'fea-acceptance', label: isArabic ? 'حاسبة الجائز (Euler-Bernoulli)' : 'Beam Calc (Analytical)', icon: Cpu },
           { id: 'mesh-generator', label: isArabic ? 'توليد الشبكة (Gmsh)' : 'Meshing (Gmsh)', icon: Activity },
-          { id: 'solver-monitor', label: isArabic ? 'حلّال CFD (OpenFOAM)' : 'CFD Solver (OpenFOAM)', icon: Sparkles },
+          { id: 'solver-monitor', label: isArabic ? 'حاسبة الجريان (Darcy-Weisbach)' : 'Pipe Flow (Analytical)', icon: Sparkles },
           { id: 'results-and-reports', label: isArabic ? 'التقارير الهندسية' : 'Reports & Dossier', icon: FileText },
           { id: 'mep-bim', label: isArabic ? 'أنظمة BIM & MEP' : '4M BIM & MEP', icon: Building2 },
           { id: 'system-settings', label: isArabic ? 'الإعدادات والمواد' : 'Materials & Standards', icon: Settings },

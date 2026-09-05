@@ -28,7 +28,7 @@ export const AiCopilotModal: React.FC<AiCopilotModalProps> = ({
   const [messages, setMessages] = useState<Array<{ role: 'user' | 'assistant'; text: string; action?: string }>>([
     {
       role: 'assistant',
-      text: 'Hello Engineer. I am 4M Engineering Copilot (Phase 11). I am connected to your OpenCASCADE B-Rep model, OpenFOAM CFD solver, and ASHRAE/IEC calculation engines. How can I assist your study today?',
+      text: 'Hello Engineer. I am 4M Engineering Copilot. I can assist with analytical beam and pipe flow formulas, design standards, and upcoming CalculiX / OpenFOAM solver setups (integration planned). How can I assist your study today?',
     },
   ]);
 
@@ -57,40 +57,28 @@ export const AiCopilotModal: React.FC<AiCopilotModalProps> = ({
         body: JSON.stringify({ prompt: query }),
       });
 
+      const data = await response.json();
+
       if (response.ok) {
-        const data = await response.json();
         setMessages((prev) => [...prev, { role: 'assistant', text: data.reply }]);
       } else {
-        throw new Error('Server response was not ok');
+        const errorMsg = data.message || data.error || 'Set GEMINI_API_KEY to enable the AI copilot.';
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: 'assistant',
+            text: `⚠️ **AI Copilot Notice**: ${errorMsg}\n\n*Code: ${data.error || 'UNCONFIGURED'}*`,
+          },
+        ]);
       }
     } catch (err) {
-      // Intelligent engineering response fallback
-      let fallback = '';
-      const lower = query.toLowerCase();
-      if (lower.includes('cooling') || lower.includes('hvac')) {
-        fallback = `[ASHRAE RTS ENGINE] Calculated total cooling load for Zone 1 (Floor Area: 120 m², 18 occupants, Summer peak 45°C DB):
-- Sensible Gain: 12.45 kW
-- Latent Gain: 1.17 kW
-- Total Required Capacity: 13.62 kW (3.87 Tons TR).
-Recommended: 1x VRF Fan Coil Unit rated for 14.5 kW with 2,400 m³/h supply airflow.`;
-      } else if (lower.includes('clash')) {
-        fallback = `[BIM CLASH DETECTOR] Spatial partitioning scan complete across 18,400 elements:
-- Clash ID #C-104: Main Supply Duct (600x300mm) intersects Structural Concrete Beam B-04 at Level 1 [Z = 3.25m].
-Recommendation: Apply 45° duct offset drop down by 250mm or re-route through beam sleeve.`;
-      } else if (lower.includes('boq')) {
-        fallback = `[BOQ ENGINE] Generated automated Bill of Quantities across Architecture, HVAC, Electrical, and Fire:
-- Total Line Items: 6 Categories, 42 Components
-- Estimated Direct Cost: $165,440 USD
-- Export prepared for PDF & Excel CSV.`;
-      } else if (lower.includes('voltage') || lower.includes('electrical')) {
-        fallback = `[IEC 60364 ELECTRICAL ENGINE] Scanned all 18 feeder circuits on MDB-01:
-- Circuit C-04 (Chiller Feeder): Ib = 76.5A, Length = 65m, Cable: 4x35 mm² Cu. Voltage Drop = 1.94% (PASS < 3.0%).
-- All circuits meet thermal ampacity and voltage drop compliance.`;
-      } else {
-        fallback = `[4M CAE ENGINE] Processed query "${query}". All geometric boundaries and topological entities have been validated. Meshing y+ ~ 1 resolution verified and ready for production simulation.`;
-      }
-
-      setMessages((prev) => [...prev, { role: 'assistant', text: fallback }]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          text: `⚠️ **Connection Error**: Unable to reach /api/copilot endpoint. Check network or server status.`,
+        },
+      ]);
     } finally {
       setIsLoading(false);
     }

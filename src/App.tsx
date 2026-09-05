@@ -132,7 +132,7 @@ export default function App() {
             <span className="w-2 h-2 rounded-full bg-[#00daf3]" />
             <span className="font-bold">GUIDED CAE WIZARD ACTIVE:</span>
             <span>
-              Follow 4 simple steps: 1. Draw/Import → 2. Choose Material & Boundary → 3. Mesh → 4. Solve. Raw OpenFOAM/CalculiX dictionaries are simplified.
+              Follow 4 simple steps: 1. Draw/Import → 2. Choose Material & Boundary → 3. Mesh → 4. Solve. Direct OpenFOAM/CalculiX solver integration is planned; analytical calculators are currently active.
             </span>
           </div>
           <button

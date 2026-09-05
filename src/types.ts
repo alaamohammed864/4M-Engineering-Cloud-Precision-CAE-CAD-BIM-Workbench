@@ -22,6 +22,7 @@ export interface ValidationMessage {
 
 export interface FeaCalculationResult {
   solver: string;
+  resultType: string;
   modelType: string;
   material: {
     name: string;
@@ -64,6 +65,7 @@ export interface FeaCalculationResult {
 
 export interface CfdCalculationResult {
   solver: string;
+  resultType: string;
   flowRegime: string;
   fluid: {
     name: string;

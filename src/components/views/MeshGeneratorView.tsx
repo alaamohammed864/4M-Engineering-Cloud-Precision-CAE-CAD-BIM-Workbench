@@ -456,7 +456,7 @@ export const MeshGeneratorView: React.FC<MeshGeneratorViewProps> = ({
                 className="w-full py-1.5 bg-[#1e2023] hover:bg-[#282a2d] text-[#00daf3] border border-[#00daf3]/40 font-bold text-[10px] rounded transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <Send className="w-3.5 h-3.5" />
-                <span>Proceed to OpenFOAM Solver</span>
+                <span>Proceed to CFD Monitor (OpenFOAM planned)</span>
               </button>
             </div>
           </div>
