@@ -1,8 +1,17 @@
 import express from 'express';
 import path from 'path';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
+
+// Deterministic provenance hash of an input configuration.
+// Replaces the previous random placeholder — the same input must always
+// produce the same hash, so results are actually reproducible/traceable.
+function computeProvenanceHash(inputConfig: unknown): string {
+  const serialized = JSON.stringify(inputConfig);
+  return 'sha256_' + crypto.createHash('sha256').update(serialized).digest('hex');
+}
 
 dotenv.config();
 
@@ -174,7 +183,10 @@ app.post('/api/simulations/:id/validate', (req, res) => {
   });
 });
 
-// Real Numerical FEA Solver Engine (Section 82 Acceptance Test)
+// Analytical beam calculator (closed-form Euler-Bernoulli formula).
+// HONESTY NOTE: this is NOT CalculiX and does NOT run a finite-element mesh.
+// It is a classical hand-calculation formula for a simple cantilever beam.
+// It must never be presented as, or labeled as, real FEA solver output.
 app.post('/api/solvers/fea/solve', (req, res) => {
   const {
     length = 1.0, // meters (e.g. 1.0 m)
@@ -234,8 +246,10 @@ app.post('/api/solvers/fea/solve', (req, res) => {
     });
   }
 
+  const inputConfig = { endpoint: 'analytical-beam-calculator', length, width, height, youngsModulus, yieldStrength, poissonRatio, forceY };
   res.json({
-    solver: 'CalculiX FEA Engine (v2.21 CCX Equivalent)',
+    resultType: 'analytical_formula',
+    solver: 'analytical-beam-calculator (Euler-Bernoulli closed-form — NOT CalculiX, no mesh/FEM involved)',
     modelType: 'Linear Elastic 3D Cantilever Beam',
     material: {
       name: 'Structural Steel S355',
@@ -266,11 +280,15 @@ app.post('/api/solvers/fea/solve', (req, res) => {
     },
     distribution,
     timestamp: new Date().toISOString(),
-    provenanceHash: 'ccx_fea_' + Math.random().toString(36).substring(2, 10),
+    provenanceHash: computeProvenanceHash(inputConfig),
   });
 });
 
-// Real Numerical CFD Solver Engine (Section 83 Acceptance Test)
+// Analytical pipe-flow calculator (closed-form Darcy-Weisbach / Swamee-Jain).
+// HONESTY NOTE: this is NOT OpenFOAM and does NOT run a discretized CFD mesh
+// or solve the Navier-Stokes equations numerically. It is a classical
+// hand-calculation for steady, fully-developed pipe flow. It must never be
+// presented as, or labeled as, real CFD solver output.
 app.post('/api/solvers/cfd/solve', (req, res) => {
   const {
     diameter = 0.1, // meters (DN100 = 100 mm)
@@ -349,8 +367,10 @@ app.post('/api/solvers/cfd/solve', (req, res) => {
     });
   }
 
+  const inputConfig = { endpoint: 'analytical-pipe-flow-calculator', diameter, length, inletVelocity, density, dynamicViscosity, roughness };
   res.json({
-    solver: 'OpenFOAM CFD Engine (simpleFoam Steady-State RANS)',
+    resultType: 'analytical_formula',
+    solver: 'analytical-pipe-flow-calculator (Darcy-Weisbach/Swamee-Jain closed-form — NOT OpenFOAM, no CFD mesh involved)',
     flowRegime,
     fluid: {
       name: 'Water (Pure 20°C)',
@@ -374,7 +394,7 @@ app.post('/api/solvers/cfd/solve', (req, res) => {
     },
     velocityProfile,
     timestamp: new Date().toISOString(),
-    provenanceHash: 'foam_cfd_' + Math.random().toString(36).substring(2, 10),
+    provenanceHash: computeProvenanceHash(inputConfig),
   });
 });
 
@@ -385,34 +405,14 @@ app.post('/api/copilot', async (req, res) => {
     const client = getGeminiClient();
 
     if (!client) {
-      // Return high-fidelity deterministic engineering calculation response if API key is not configured
-      const simulatedResponses: Record<string, string> = {
-        'mesh': `### Mesh Quality & Boundary Layer Analysis
-- **Min Orthogonal Quality**: 0.72 (Target > 0.15) — **PASSED**
-- **Max Skewness**: 0.281 (Target < 0.85) — **OPTIMAL**
-- **Boundary Layer y+**: ~0.98 with first layer height 0.012 mm across 15 prism layers.
-- **Recommendation**: Prism aspect ratio near trailing edge reaches 8.4; ensure prism layer growth factor λ does not exceed 1.25 to prevent pressure jump discontinuities in viscous sublayer.`,
-        'hvac': `### HVAC & Thermal Load Calculation (ASHRAE 90.1 / ISO 52016)
-- **Calculated Cooling Load**: 42.8 kW (Sensible: 34.2 kW, Latent: 8.6 kW)
-- **Required Airflow**: 2,850 CFM (4,842 m³/h)
-- **Recommended Ductwork**: 450 mm × 350 mm rectangular supply duct (Velocity = 5.2 m/s, Friction = 0.82 Pa/m)
-- **Equipment Selection**: Variable Refrigerant Flow (VRF) or High-Efficiency Air Handling Unit with economizer cycle.`,
-        'solver': `### OpenFOAM simpleFoam Convergence Assessment
-- **Status**: Iteration 420/1000 — 42% complete.
-- **Residuals**: Ux = 8.41e-6, Uy = 4.18e-6, p = 1.23e-5, ω = 9.11e-5.
-- **Stability**: Continuity error is 1.2e-06 with Courant number mean = 0.42 (safe < 1.0 limit).
-- **Physical Validity**: Aerodynamic lift Cl has plateaued at 0.8420 ± 0.0004 with L/D ratio 7.846 matching NASA TM-4281 within 1.8%.`,
-      };
-
-      const fallback = simulatedResponses[module] || `### Engineering Analysis & Verification
-Based on the current CAD/BIM model and CFD parameters:
-- **Geometry & Constraints**: B-Rep solid body generated with 0 DOF fully constrained profiles.
-- **Simulation Status**: Converging smoothly with stable residuals below threshold (1.0e-5).
-- **Next Action**: Ready to commit study and export compiled ISO 9001 compliance report.`;
-
-      return res.json({
-        reply: fallback,
-        source: 'Engineering Rule Engine (Local)',
+      // HONESTY FIX: previously this branch returned hardcoded, fabricated
+      // "solver telemetry" (fake iteration counts, fake residuals, fake
+      // literature comparisons) presented as if it were a live engineering
+      // assessment. That is fabricated data and must never be served.
+      // When no AI key is configured, say so plainly instead.
+      return res.status(503).json({
+        error: 'AI_NOT_CONFIGURED',
+        message: 'The AI Engineering Copilot is not available: no GEMINI_API_KEY is configured on the server. No simulated or fabricated response will be substituted.',
       });
     }
 
