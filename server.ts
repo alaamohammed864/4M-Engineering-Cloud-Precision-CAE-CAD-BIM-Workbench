@@ -434,7 +434,33 @@ const handlePipeFlowCalculation = (req: express.Request, res: express.Response) 
 };
 
 app.post('/api/solvers/analytical-pipe-flow-calculator', handlePipeFlowCalculation);
-app.post('/api/solvers/cfd/solve', handlePipeFlowCalculation);
+
+// Real CFD solve: proxies to the Python/FastAPI backend (backend/) which
+// writes a real OpenFOAM case (blockMeshDict, boundary conditions), runs
+// blockMesh + simpleFoam as isolated subprocesses, and parses the real
+// solved p/k field files. This route does NOT evaluate the
+// Darcy-Weisbach/Swamee-Jain formula - if the backend is unreachable or the
+// OpenFOAM binaries are missing there, this fails loudly (502/503) and
+// never silently falls back to handlePipeFlowCalculation.
+const CFD_BACKEND_URL = process.env.CFD_BACKEND_URL || FEA_BACKEND_URL;
+
+app.post('/api/solvers/cfd/solve', async (req, res) => {
+  try {
+    const backendResponse = await fetch(`${CFD_BACKEND_URL}/solve/cfd/pipe-flow`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req.body || {}),
+    });
+    const data = await backendResponse.json();
+    res.status(backendResponse.status).json(data);
+  } catch (err: any) {
+    res.status(502).json({
+      error: 'SOLVER_BACKEND_UNREACHABLE',
+      message: `Could not reach the CFD solver backend at ${CFD_BACKEND_URL}. ` +
+        `Is the backend/ (FastAPI + OpenFOAM) service running? Original error: ${err.message}`,
+    });
+  }
+});
 
 // AI Engineering Copilot Endpoint
 app.post('/api/copilot', async (req, res) => {

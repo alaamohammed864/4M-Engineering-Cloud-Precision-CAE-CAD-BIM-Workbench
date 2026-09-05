@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from . import solver_adapter
+from . import openfoam_adapter
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("fea-solver-backend")
@@ -25,16 +26,38 @@ class BeamSolveRequest(BaseModel):
     poissonRatio: float = Field(default=0.3, ge=0.0, lt=0.5)
 
 
+class PipeFlowSolveRequest(BaseModel):
+    diameter: float = 0.1
+    length: float = 5.0
+    inletVelocity: float = 3.0
+    density: float = 998.2
+    dynamicViscosity: float = 1.002e-3
+    roughness: float = 0.000045
+
+
 @app.get("/health")
 def health():
+    status = {"status": "ok"}
+    http_status = 200
     try:
-        version = solver_adapter._get_ccx_version()
-        return {"status": "ok", "ccxAvailable": True, "ccxVersion": version}
+        status["ccxAvailable"] = True
+        status["ccxVersion"] = solver_adapter._get_ccx_version()
     except solver_adapter.SolverNotAvailableError as exc:
-        return JSONResponse(
-            status_code=503,
-            content={"status": "degraded", "ccxAvailable": False, "message": str(exc)},
-        )
+        status["ccxAvailable"] = False
+        status["ccxMessage"] = str(exc)
+        status["status"] = "degraded"
+        http_status = 503
+
+    try:
+        openfoam_adapter._require_binaries()
+        status["openfoamAvailable"] = True
+    except openfoam_adapter.SolverNotAvailableError as exc:
+        status["openfoamAvailable"] = False
+        status["openfoamMessage"] = str(exc)
+        status["status"] = "degraded"
+        http_status = 503
+
+    return JSONResponse(status_code=http_status, content=status)
 
 
 @app.post("/solve/fea/beam")
@@ -106,4 +129,71 @@ def solve_fea_beam(req: BeamSolveRequest):
         "provenanceHash": provenance_hash,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "sourceFiles": {"inp": result.inp_path, "frd": result.frd_path},
+    }
+
+
+@app.post("/solve/cfd/pipe-flow")
+def solve_cfd_pipe_flow(req: PipeFlowSolveRequest):
+    input_config = req.model_dump()
+    provenance_hash = hashlib.sha256(
+        json.dumps(input_config, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+
+    try:
+        result = openfoam_adapter.solve_pipe_flow(
+            diameter=req.diameter,
+            length=req.length,
+            inlet_velocity=req.inletVelocity,
+            density=req.density,
+            dynamic_viscosity=req.dynamicViscosity,
+            roughness=req.roughness,
+        )
+    except openfoam_adapter.SolverNotAvailableError as exc:
+        logger.error("OpenFOAM binaries not available: %s", exc)
+        raise HTTPException(status_code=503, detail={
+            "error": "SOLVER_NOT_AVAILABLE",
+            "message": str(exc),
+        })
+    except openfoam_adapter.SolverFailedError as exc:
+        logger.error("OpenFOAM run failed: %s", exc)
+        raise HTTPException(status_code=502, detail={
+            "error": "SOLVER_RUN_FAILED",
+            "message": str(exc),
+        })
+
+    reynolds = (req.density * req.inletVelocity * req.diameter) / req.dynamicViscosity
+
+    return {
+        "solver": "OpenFOAM simpleFoam (Real RANS k-epsilon CFD Solve)",
+        "resultType": "cfd_solver",
+        "modelType": "Steady RANS, Axisymmetric Wedge Pipe Flow",
+        "mesh": {
+            "cellCount": result.n_cells,
+            "representation": "5-degree axisymmetric wedge (standard OpenFOAM pipe-flow technique)",
+        },
+        "fluid": {
+            "densityKgM3": req.density,
+            "dynamicViscosityPaS": req.dynamicViscosity,
+            "reynoldsNumber": round(reynolds, 1),
+            "flowRegime": "turbulent" if reynolds > 4000 else "laminar",
+        },
+        "geometry": {"diameterMm": req.diameter * 1000, "lengthM": req.length},
+        "boundaryConditions": {
+            "inletVelocityMs": req.inletVelocity,
+            "outletPressurePa": 0,
+            "wallRoughnessMm": req.roughness * 1000,
+        },
+        "results": {
+            "pressureDropPa": round(result.pressure_drop_pa, 2),
+            "pressureDropBar": round(result.pressure_drop_pa / 1e5, 5),
+            "wallShearStressPa": round(result.wall_shear_stress_pa, 3),
+        },
+        "convergence": {
+            "converged": result.converged,
+            "residualTarget": 1e-4,
+        },
+        "solveTimeSeconds": round(result.solve_time_seconds, 4),
+        "provenanceHash": provenance_hash,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "sourceCaseDir": result.case_dir,
     }
