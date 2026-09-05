@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import Viewer3D from '../viewer/Viewer3D';
 import {
   MousePointer,
   Minus,
@@ -739,35 +740,29 @@ export const GeometrySketchView: React.FC<GeometrySketchViewProps> = ({
               </div>
             </div>
 
-            {/* Realtime 3D Solid Preview */}
+            {/* Realtime 3D Solid Preview — real WebGL viewer (Priority 3).
+                HONESTY NOTE: the previous version of this panel was a
+                static SVG drawing with hardcoded fake face-count/volume
+                numbers ("Faces: 18 | Vol: 4.82e-4 m³") that never changed
+                regardless of the actual sketch - a fabricated-metrics
+                problem exactly like the fake solver labels fixed
+                elsewhere. Real face/volume metrics require the
+                OpenCASCADE kernel integration (Priority 6, not yet done),
+                so we show a real 3D viewer with an explicitly-labeled demo
+                shape instead of inventing numbers. */}
             <div className="flex flex-col gap-1">
               <div className="flex items-center justify-between text-[9px] text-[#8a919f]">
                 <span>SOLID KERNEL PREVIEW</span>
-                <span className="text-[#00daf3]">Faces: 18 | Vol: 4.82e-4 m³</span>
+                <span className="text-[#f5a623]">DEMO GEOMETRY — real metrics require OpenCASCADE integration (not yet implemented)</span>
               </div>
-              <div className="w-full h-32 bg-[#0c0e11] rounded border border-[#282a2d] relative overflow-hidden flex items-center justify-center">
-                <svg className="w-full h-full" viewBox="0 0 300 140">
-                  <defs>
-                    <linearGradient id="solidGrad1-cad" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#3491ff" stopOpacity="0.85" />
-                      <stop offset="100%" stopColor="#003061" stopOpacity="0.95" />
-                    </linearGradient>
-                    <linearGradient id="solidGrad2-cad" x1="0%" y1="0%" x2="0%" y2="100%">
-                      <stop offset="0%" stopColor="#00daf3" stopOpacity="0.6" />
-                      <stop offset="100%" stopColor="#004f58" stopOpacity="0.8" />
-                    </linearGradient>
-                  </defs>
-                  <polygon points="60,65 190,30 250,55 120,90" fill="url(#solidGrad2-cad)" stroke="#a8c8ff" strokeWidth="1" />
-                  <polygon points="60,65 120,90 120,115 60,90" fill="url(#solidGrad1-cad)" stroke="#3491ff" strokeWidth="1" />
-                  <polygon points="120,90 250,55 250,80 120,115" fill="#002955" stroke="#3491ff" strokeWidth="1" />
-                  <polygon points="150,70 190,58 190,95 150,107" fill="#004689" stroke="#a8c8ff" strokeWidth="0.8" />
-                  <line x1="60" y1="65" x2="60" y2="90" stroke="#00daf3" strokeWidth="1.5" />
-                  <line x1="120" y1="90" x2="120" y2="115" stroke="#00daf3" strokeWidth="1.5" />
-                  <line x1="250" y1="55" x2="250" y2="80" stroke="#00daf3" strokeWidth="1.5" />
-                  <text x="12" y="20" fill="#a8c8ff" fontSize="9" fontWeight="bold">B-REP SOLID: Extrude_001</text>
-                </svg>
+              <div className="w-full h-32 bg-[#0c0e11] rounded border border-[#282a2d] relative overflow-hidden">
+                <Viewer3D
+                  geometryUrl="/assets/demo-cube.stl"
+                  displayMode="solid+wireframe"
+                  emptyStateLabel="No geometry loaded"
+                />
                 <div className="absolute bottom-1 right-1 bg-[#1e2023]/90 px-1 py-0.5 rounded text-[8px] text-[#8a919f]">
-                  Iso Normal
+                  Iso Normal · Real WebGL (Three.js)
                 </div>
               </div>
             </div>
