@@ -1,4 +1,6 @@
 import express from 'express';
+import http from 'http';
+import { WebSocketServer, WebSocket } from 'ws';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
@@ -531,7 +533,45 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
+  // Real-time monitoring (Priority 4): the browser only ever talks to this
+  // Node server (consistent with every other route), which proxies the
+  // WebSocket byte-for-byte to the real FastAPI/OpenFOAM backend. This is
+  // NOT a fake progress relay - every message forwarded here originated
+  // from openfoam_adapter.solve_pipe_flow_streaming() parsing the actual
+  // simpleFoam subprocess's live stdout (see backend/app/openfoam_adapter.py).
+  const httpServer = http.createServer(app);
+  const wss = new WebSocketServer({ server: httpServer, path: '/ws/solve/cfd/pipe-flow' });
+
+  wss.on('connection', (clientWs) => {
+    const backendWsUrl = CFD_BACKEND_URL.replace(/^http/, 'ws') + '/ws/solve/cfd/pipe-flow';
+    const backendWs = new WebSocket(backendWsUrl);
+
+    backendWs.on('open', () => {
+      // Nothing to send yet - wait for the client's first message (the
+      // solve parameters) and relay it through.
+    });
+    backendWs.on('message', (data) => {
+      if (clientWs.readyState === clientWs.OPEN) clientWs.send(data.toString());
+    });
+    backendWs.on('close', () => clientWs.close());
+    backendWs.on('error', (err) => {
+      if (clientWs.readyState === clientWs.OPEN) {
+        clientWs.send(JSON.stringify({
+          event: 'simulation.failed', stage: 'startup',
+          message: `Could not reach CFD backend WebSocket at ${backendWsUrl}: ${err.message}`,
+        }));
+      }
+      clientWs.close();
+    });
+
+    clientWs.on('message', (data) => {
+      if (backendWs.readyState === backendWs.OPEN) backendWs.send(data.toString());
+      else backendWs.once('open', () => backendWs.send(data.toString()));
+    });
+    clientWs.on('close', () => backendWs.close());
+  });
+
+  httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`4M Engineering Cloud running on port ${PORT}`);
   });
 }

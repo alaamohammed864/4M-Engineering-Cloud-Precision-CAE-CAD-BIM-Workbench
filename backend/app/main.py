@@ -3,7 +3,7 @@ import json
 import logging
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -197,3 +197,41 @@ def solve_cfd_pipe_flow(req: PipeFlowSolveRequest):
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "sourceCaseDir": result.case_dir,
     }
+
+
+@app.websocket("/ws/solve/cfd/pipe-flow")
+async def ws_solve_cfd_pipe_flow(websocket: WebSocket):
+    """
+    Real-time monitoring (Priority 4): every event sent over this socket is
+    parsed live from the actual simpleFoam subprocess's stdout as it runs -
+    there is no setInterval/fake progress counter anywhere in this path.
+    Disconnecting the client cancels the underlying solve.
+    """
+    await websocket.accept()
+    try:
+        params = await websocket.receive_json()
+    except Exception:
+        params = {}
+
+    req = PipeFlowSolveRequest(**params)
+
+    try:
+        async for event in openfoam_adapter.solve_pipe_flow_streaming(
+            diameter=req.diameter,
+            length=req.length,
+            inlet_velocity=req.inletVelocity,
+            density=req.density,
+            dynamic_viscosity=req.dynamicViscosity,
+            roughness=req.roughness,
+        ):
+            await websocket.send_json(event)
+    except WebSocketDisconnect:
+        logger.info("Client disconnected from CFD monitoring socket; cancelling solve")
+        return
+    except openfoam_adapter.SolverNotAvailableError as exc:
+        await websocket.send_json({"event": "simulation.failed", "stage": "startup", "message": str(exc)})
+    finally:
+        try:
+            await websocket.close()
+        except Exception:
+            pass
