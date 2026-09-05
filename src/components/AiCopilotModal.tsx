@@ -28,7 +28,7 @@ export const AiCopilotModal: React.FC<AiCopilotModalProps> = ({
   const [messages, setMessages] = useState<Array<{ role: 'user' | 'assistant'; text: string; action?: string }>>([
     {
       role: 'assistant',
-      text: 'Hello Engineer. I am 4M Engineering Copilot. I can assist with analytical beam and pipe flow formulas, design standards, and upcoming CalculiX / OpenFOAM solver setups (integration planned). How can I assist your study today?',
+      text: 'Hello Engineer. I am 4M Engineering Copilot. I can assist with the real CalculiX FEM beam solver, analytical pipe flow formulas, design standards, and an upcoming OpenFOAM CFD solver integration (planned). How can I assist your study today?',
     },
   ]);
 

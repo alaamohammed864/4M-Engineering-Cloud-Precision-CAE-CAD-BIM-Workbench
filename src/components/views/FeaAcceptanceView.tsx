@@ -567,13 +567,31 @@ export const FeaAcceptanceView: React.FC<FeaAcceptanceViewProps> = ({ onOpenCopi
                 <div>Type: <span className="text-[#ffdd00] font-mono">{feaResult?.resultType || 'analytical_formula'}</span></div>
                 <div>Solver: <span className="text-white font-mono">{feaResult?.solver}</span></div>
                 <div>SHA-256: <span className="font-mono text-[#00daf3] text-[8px] break-all">{feaResult?.provenanceHash}</span></div>
-                <div>Standard: <span className="text-white">Euler-Bernoulli Formulation (AIAA S-117 / Eurocode 3)</span></div>
+                <div>Standard: <span className="text-white">
+                  {feaResult?.resultType === 'fem_solver'
+                    ? 'ISO/IEC C3D8I Solid FEM Discretization'
+                    : 'Euler-Bernoulli Formulation (AIAA S-117 / Eurocode 3)'}
+                </span></div>
                 <div>Equilibrium: <span className="text-[#34c759] font-bold">{feaResult?.reactions.equilibriumCheck}</span></div>
+                {feaResult?.mesh && (
+                  <div>Mesh: <span className="text-white font-mono">
+                    {feaResult.mesh.elementCount} × {feaResult.mesh.elementType} elements, {feaResult.mesh.nodeCount} nodes
+                  </span></div>
+                )}
               </div>
 
-              <div className="text-[8px] text-[#8a919f] italic bg-[#111316] p-1.5 rounded border border-[#282a2d]">
-                * Full 3D finite element discretization via CalculiX solver binary is not yet implemented.
-              </div>
+              {feaResult?.resultType === 'fem_solver' ? (
+                <div className="text-[8px] text-[#34c759] italic bg-[#111316] p-1.5 rounded border border-[#282a2d]">
+                  ✓ Real 3D finite element solve via the CalculiX (ccx) binary — mesh generated,
+                  solved as an isolated subprocess, results parsed from actual .frd output.
+                </div>
+              ) : (
+                <div className="text-[8px] text-[#8a919f] italic bg-[#111316] p-1.5 rounded border border-[#282a2d]">
+                  * Analytical closed-form result (no mesh). Full 3D finite element discretization
+                  via the CalculiX solver binary is available on this build — retry if this
+                  result did not come from the real solver backend.
+                </div>
+              )}
 
               <button
                 onClick={() => alert(`Generated Official Structural Dossier for Cantilever Study (${feaResult?.provenanceHash}). Ready for PDF download.`)}

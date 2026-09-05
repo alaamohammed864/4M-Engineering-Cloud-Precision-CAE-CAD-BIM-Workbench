@@ -34,8 +34,14 @@ export interface FeaCalculationResult {
     lengthM: number;
     widthMm: number;
     heightMm: number;
-    momentOfInertiaM4: number;
-    sectionModulusM3: number;
+    momentOfInertiaM4?: number; // only meaningful for the analytical beam-formula path
+    sectionModulusM3?: number;  // only meaningful for the analytical beam-formula path
+  };
+  mesh?: {
+    elementType: string;
+    elementCount: number;
+    nodeCount: number;
+    divisions: { nx: number; ny: number; nz: number };
   };
   loads: {
     tipForceY: number;
@@ -55,12 +61,14 @@ export interface FeaCalculationResult {
     station: number;
     xRatio: number;
     xMeters: number;
-    momentNm: number;
+    momentNm?: number; // only present on the analytical beam-formula path
     vonMisesStressMpa: number;
     displacementMm: number;
   }>;
   provenanceHash: string;
-  timestamp: string;
+  timestamp?: string;
+  solveTimeSeconds?: number;
+  sourceFiles?: { inp: string; frd: string };
 }
 
 export interface CfdCalculationResult {

@@ -284,7 +284,35 @@ const handleBeamCalculation = (req: express.Request, res: express.Response) => {
 };
 
 app.post('/api/solvers/analytical-beam-calculator', handleBeamCalculation);
-app.post('/api/solvers/fea/solve', handleBeamCalculation);
+
+// Real FEA solve: proxies to the Python/FastAPI backend (backend/) which
+// shells out to the actual CalculiX (ccx) binary as an isolated subprocess,
+// writes a real .inp deck, and parses real .frd output files. This route
+// does NOT compute a formula itself - if the backend is unreachable or the
+// ccx binary is missing there, this fails loudly (502/503) and never
+// silently falls back to handleBeamCalculation.
+const FEA_BACKEND_URL = process.env.FEA_BACKEND_URL || 'http://localhost:8001';
+
+app.post('/api/solvers/fea/solve', async (req, res) => {
+  try {
+    const backendResponse = await fetch(`${FEA_BACKEND_URL}/solve/fea/beam`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req.body || {}),
+    });
+    const data = await backendResponse.json();
+    res.status(backendResponse.status).json(data);
+  } catch (err: any) {
+    // The backend process/container is unreachable entirely (not even a
+    // 503 - a network-level failure). Fail loudly; never fall back to the
+    // analytical formula for a route that promises a real FEM solve.
+    res.status(502).json({
+      error: 'SOLVER_BACKEND_UNREACHABLE',
+      message: `Could not reach the FEA solver backend at ${FEA_BACKEND_URL}. ` +
+        `Is the backend/ (FastAPI + ccx) service running? Original error: ${err.message}`,
+    });
+  }
+});
 
 // Analytical Pipe Flow Calculator (Darcy-Weisbach / Swamee-Jain closed-form solution)
 const handlePipeFlowCalculation = (req: express.Request, res: express.Response) => {

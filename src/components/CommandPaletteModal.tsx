@@ -65,8 +65,8 @@ export const CommandPaletteModal: React.FC<CommandPaletteModalProps> = ({
     },
     {
       id: 'cmd_fea_acc',
-      title: 'Analytical Beam Calculator (Euler-Bernoulli)',
-      subtitle: 'Analytical closed-form beam calculation; CalculiX FEM solver integration is planned',
+      title: 'Real FEM Beam Solver (CalculiX)',
+      subtitle: 'Runs the real CalculiX (ccx) binary on a generated mesh via an isolated solver backend',
       icon: Cpu,
       category: 'TESTING',
       action: () => {
