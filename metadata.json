@@ -1,0 +1,6 @@
+{
+  "name": "ENGINEER CAE CLOUD — Cloud-Native Web CAE, CAD & Simulation Platform",
+  "description": "Professional browser-based Computer-Aided Engineering workbench. End-to-end geometry, parametric 2D/3D sketching, OpenCASCADE B-Rep topology, Gmsh meshing, CalculiX FEA & OpenFOAM CFD solvers, live residual convergence, scientific 3D post-processing, and engineering reports.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
