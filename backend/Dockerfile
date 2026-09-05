@@ -25,6 +25,12 @@ ENV FOAM_ETC=/usr/share/openfoam/etc
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Verify the real OpenCASCADE kernel bindings actually import and can
+# build/query real B-Rep geometry - fail the build if not, same
+# discipline as the ccx/blockMesh checks above.
+RUN python3 -c "from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox; from OCP.GProp import GProp_GProps; from OCP.BRepGProp import BRepGProp; b = BRepPrimAPI_MakeBox(1,1,1).Shape(); p = GProp_GProps(); BRepGProp.VolumeProperties_s(b, p); assert abs(p.Mass() - 1.0) < 1e-6, 'OCCT kernel volume check failed'; print('OpenCASCADE (OCP) kernel verified OK')"
+
 COPY app ./app
 
 EXPOSE 8001

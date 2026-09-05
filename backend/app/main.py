@@ -1,14 +1,17 @@
 import hashlib
 import json
 import logging
+import os
+import uuid
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File
+from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel, Field
 
 from . import solver_adapter
 from . import openfoam_adapter
+from . import geometry_kernel
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("fea-solver-backend")
@@ -235,3 +238,62 @@ async def ws_solve_cfd_pipe_flow(websocket: WebSocket):
             await websocket.close()
         except Exception:
             pass
+
+
+GEOMETRY_STORAGE_DIR = os.environ.get("GEOMETRY_STORAGE_DIR", "/tmp/cae_geometry")
+os.makedirs(GEOMETRY_STORAGE_DIR, exist_ok=True)
+
+
+@app.post("/geometry/import")
+async def import_geometry(file: UploadFile = File(...)):
+    """
+    Real geometry import (Priority 6): saves the uploaded file, parses it
+    with the actual OpenCASCADE kernel (geometry_kernel.py, via the
+    cadquery-ocp/OCP bindings), and returns REAL extracted topology - face/
+    edge/vertex counts and volume come from OCCT's own explorer and
+    mass-property algorithms, never estimated. Also writes a real
+    tessellated STL preview the 3D viewer can load directly.
+    """
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in (".step", ".stp", ".stl"):
+        raise HTTPException(status_code=400, detail={
+            "error": "UNSUPPORTED_FORMAT",
+            "message": f"'{ext}' is not supported. Supported formats: .step, .stp, .stl",
+        })
+
+    geometry_id = str(uuid.uuid4())
+    saved_path = os.path.join(GEOMETRY_STORAGE_DIR, f"{geometry_id}{ext}")
+    with open(saved_path, "wb") as f:
+        f.write(await file.read())
+
+    try:
+        topology, stl_preview_path = geometry_kernel.import_geometry_file(saved_path)
+    except geometry_kernel.GeometryImportError as exc:
+        raise HTTPException(status_code=422, detail={
+            "error": "GEOMETRY_IMPORT_FAILED",
+            "message": str(exc),
+        })
+
+    return {
+        "geometryId": geometry_id,
+        "originalFilename": file.filename,
+        "kernel": "OpenCASCADE (via cadquery-ocp/OCP bindings)",
+        "topology": {
+            "faceCount": topology.face_count,
+            "edgeCount": topology.edge_count,
+            "vertexCount": topology.vertex_count,
+            "faces": topology.faces,
+        },
+        "volume": topology.volume,
+        "boundingBox": topology.bounding_box,
+        "previewUrl": f"/geometry/{geometry_id}/preview.stl",
+    }
+
+
+@app.get("/geometry/{geometry_id}/preview.stl")
+def get_geometry_preview(geometry_id: str):
+    for ext in (".step", ".stp", ".stl"):
+        candidate = os.path.join(GEOMETRY_STORAGE_DIR, f"{geometry_id}{ext}.preview.stl")
+        if os.path.exists(candidate):
+            return FileResponse(candidate, media_type="model/stl")
+    raise HTTPException(status_code=404, detail={"error": "NOT_FOUND", "message": "No preview found for this geometry ID"})
