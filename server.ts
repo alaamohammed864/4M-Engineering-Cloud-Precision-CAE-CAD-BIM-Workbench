@@ -4,6 +4,9 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
 import { GoogleGenAI } from '@google/genai';
+import * as db from './db.js';
+import * as auth from './auth.js';
+import type { AuthedRequest } from './auth.js';
 
 dotenv.config();
 
@@ -34,42 +37,37 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Projects Management API (Section 6 & 65)
-const mockProjects = [
-  {
-    id: 'proj_fea_cantilever',
-    name: 'Acceptance Test — Cantilever Beam FEA',
-    type: 'FEA',
-    description: 'Analytical beam calculation of a 1.0m steel cantilever under 10kN tip load (CalculiX integration not yet implemented)',
-    lastModified: '2026-09-04T22:30:00Z',
-    status: 'Ready',
-    meshCount: '12,450 Tet10 Elements',
-    material: 'Structural Steel (S355)',
-  },
-  {
-    id: 'proj_cfd_pipe',
-    name: 'Acceptance Test — Internal Pipe Flow CFD',
-    type: 'CFD',
-    description: 'Analytical pipe flow calculation of turbulent water flow through DN100 pipe (OpenFOAM integration not yet implemented)',
-    lastModified: '2026-09-04T21:15:00Z',
-    status: 'Converged',
-    meshCount: '84,200 Poly-Hex Elements',
-    material: 'Water (Pure 20°C)',
-  },
-  {
-    id: 'proj_aero_wing',
-    name: 'Transonic Airfoil Aerodynamics (NACA 0012)',
-    type: 'CFD',
-    description: 'External flow at Mach 0.15, Re 3.2M, angle of attack 4.0 degrees',
-    lastModified: '2026-09-04T20:00:00Z',
-    status: 'Completed',
-    meshCount: '142,000 Prism+Hex Elements',
-    material: 'Air (Standard Atmosphere)',
-  },
-];
-
+// Projects Management API (Section 6 & 65) — backed by real SQLite storage
+// (db.ts), seeded once with the acceptance-test projects. Survives a
+// server restart, unlike the previous hardcoded array.
 app.get('/api/projects', (req, res) => {
-  res.json({ projects: mockProjects });
+  res.json({ projects: db.listProjects() });
+});
+
+// --- Authentication (Priority 5) ---
+app.post('/api/auth/register', (req, res) => {
+  const { email, password, role } = req.body || {};
+  if (!email || !password || password.length < 8) {
+    return res.status(400).json({ error: 'INVALID_INPUT', message: 'email and a password of at least 8 characters are required' });
+  }
+  if (db.findUserByEmail(email)) {
+    return res.status(409).json({ error: 'EMAIL_TAKEN', message: 'A user with this email already exists' });
+  }
+  const allowedRoles = ['ADMIN', 'ENGINEER', 'VIEWER'];
+  const finalRole = allowedRoles.includes(role) ? role : 'ENGINEER';
+  const user = db.createUser(email, auth.hashPassword(password), finalRole);
+  const token = auth.signToken(user as any);
+  res.status(201).json({ token, user });
+});
+
+app.post('/api/auth/login', (req, res) => {
+  const { email, password } = req.body || {};
+  const user = db.findUserByEmail(email || '');
+  if (!user || !auth.verifyPassword(password || '', user.password_hash)) {
+    return res.status(401).json({ error: 'INVALID_CREDENTIALS', message: 'Email or password is incorrect' });
+  }
+  const token = auth.signToken(user);
+  res.json({ token, user: { id: user.id, email: user.email, role: user.role } });
 });
 
 // Pre-Simulation Validation Engine (Section 28)
@@ -293,7 +291,7 @@ app.post('/api/solvers/analytical-beam-calculator', handleBeamCalculation);
 // silently falls back to handleBeamCalculation.
 const FEA_BACKEND_URL = process.env.FEA_BACKEND_URL || 'http://localhost:8001';
 
-app.post('/api/solvers/fea/solve', async (req, res) => {
+app.post('/api/solvers/fea/solve', auth.requireAuth, auth.requireRole('ADMIN', 'ENGINEER'), async (req, res) => {
   try {
     const backendResponse = await fetch(`${FEA_BACKEND_URL}/solve/fea/beam`, {
       method: 'POST',
@@ -444,7 +442,7 @@ app.post('/api/solvers/analytical-pipe-flow-calculator', handlePipeFlowCalculati
 // never silently falls back to handlePipeFlowCalculation.
 const CFD_BACKEND_URL = process.env.CFD_BACKEND_URL || FEA_BACKEND_URL;
 
-app.post('/api/solvers/cfd/solve', async (req, res) => {
+app.post('/api/solvers/cfd/solve', auth.requireAuth, auth.requireRole('ADMIN', 'ENGINEER'), async (req, res) => {
   try {
     const backendResponse = await fetch(`${CFD_BACKEND_URL}/solve/cfd/pipe-flow`, {
       method: 'POST',
@@ -499,14 +497,20 @@ Provide a concise, highly technical, and actionable engineering response with fo
   }
 });
 
-// Mock Project Save / State Storage
-app.post('/api/projects/save', (req, res) => {
-  const { projectData } = req.body;
+// Real project persistence (Priority 2 + 5): requires authentication and
+// actually writes a row that is retrievable afterward, replacing the
+// previous handler that returned a fake success/checksum without storing
+// anything.
+app.post('/api/projects/save', auth.requireAuth, (req: AuthedRequest, res) => {
+  const { id, name, type, description, status, meshCount, material, projectData } = req.body || {};
+  if (!id || !name || !type) {
+    return res.status(400).json({ error: 'INVALID_INPUT', message: 'id, name, and type are required' });
+  }
+  const saved = db.upsertProject(id, req.user!.id, { name, type, description, status, meshCount, material, projectData });
   res.json({
     success: true,
+    project: saved,
     savedAt: new Date().toISOString(),
-    version: 'v2.4.1-revC',
-    checksum: 'a8f4c9102b',
   });
 });
 
