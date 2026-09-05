@@ -157,9 +157,23 @@ export const TopBar: React.FC<TopBarProps> = ({
             <span className="px-1 py-0.1 text-[8px] bg-[#00daf3]/20 text-[#00daf3] rounded">AI</span>
           </button>
 
+          {/* Developer Credit Badge */}
+          <div
+            className="flex items-center gap-1.5 px-2 py-0.5 bg-[#181b20] rounded border border-[#3491ff]/40 text-[10px] shadow-sm hover:border-[#00daf3] transition-colors"
+            title="Lead Software Architect & Developer: Eng. Alaa Mohammed (م. علاء محمد)"
+          >
+            <div className="w-5 h-5 rounded-full bg-gradient-to-tr from-[#003061] to-[#3491ff] flex items-center justify-center text-white font-bold text-[9px] ring-1 ring-[#00daf3]/50 shrink-0">
+              AM
+            </div>
+            <div className="flex flex-col leading-none">
+              <span className="text-[7.5px] text-[#00daf3] font-bold tracking-wider">DEVELOPER</span>
+              <span className="text-white font-bold text-[10px] tracking-tight whitespace-nowrap">Eng. Alaa Mohammed</span>
+            </div>
+          </div>
+
           {/* User Account Avatar */}
-          <div className="w-6 h-6 rounded-full bg-[#3491ff] flex items-center justify-center text-black font-bold text-xs shadow">
-            <User className="w-3.5 h-3.5 text-[#003061]" />
+          <div className="w-6 h-6 rounded-full bg-[#282a2d] border border-[#37393d] flex items-center justify-center text-[#a8c8ff] font-bold text-xs shadow">
+            <User className="w-3.5 h-3.5 text-[#a8c8ff]" />
           </div>
         </div>
       </div>

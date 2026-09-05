@@ -349,6 +349,7 @@ export const ResultsReportView: React.FC<ResultsReportViewProps> = ({ onOpenCopi
 
               <div className="flex flex-col gap-1 text-[9px] text-[#8a919f]">
                 <div>Project: <span className="text-white">Aero_Wing_Transonic_Evaluation</span></div>
+                <div>Lead Developer: <span className="text-[#00daf3] font-bold">Eng. Alaa Mohammed</span></div>
                 <div>Standard: <span className="text-[#a8c8ff]">AIAA S-117 / ISO 14001 / Eurocode</span></div>
                 <div>Status: <span className="text-[#34c759] font-bold">APPROVED FOR FLIGHT ENVELOPE</span></div>
                 <div>Max Stress Margin: <span className="text-white font-bold">+18.4% (Safety Factor: 1.50)</span></div>

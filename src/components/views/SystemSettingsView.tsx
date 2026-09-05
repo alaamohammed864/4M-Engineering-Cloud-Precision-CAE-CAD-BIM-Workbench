@@ -42,6 +42,32 @@ export const SystemSettingsView: React.FC = () => {
           </span>
         </div>
 
+        {/* Platform & Developer Information Card */}
+        <div className="bg-[#1a1c1f] p-4 rounded border border-[#282a2d] flex flex-col gap-3 shadow-md">
+          <div className="flex items-center justify-between border-b border-[#282a2d] pb-2">
+            <div className="flex items-center gap-2">
+              <Shield className="w-4 h-4 text-[#00daf3]" />
+              <span className="font-bold text-white text-[12px]">Platform Architecture & Developer Information</span>
+            </div>
+            <span className="text-[9px] text-[#34c759] bg-[#111316] px-2 py-0.5 rounded border border-[#34c759]/40">
+              OFFICIAL RELEASE
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px]">
+            <div className="bg-[#111316] p-3 rounded border border-[#3491ff]/30 flex flex-col gap-1">
+              <span className="text-[#8a919f] text-[9px] uppercase font-bold tracking-wider">Lead Software Architect & Developer</span>
+              <span className="text-[14px] text-[#00daf3] font-bold">Eng. Alaa Mohammed</span>
+              <span className="text-[#c0c6d6] text-[10px]">م. علاء محمد — Principal CAE / BIM Systems Engineer</span>
+            </div>
+            <div className="bg-[#111316] p-3 rounded border border-[#282a2d] flex flex-col gap-1">
+              <span className="text-[#8a919f] text-[9px] uppercase font-bold tracking-wider">Engineering Suite</span>
+              <span className="text-white font-bold text-[13px]">4M Engineering Cloud 2026</span>
+              <span className="text-[#8a919f] text-[10px]">Full-Stack Web CAD, BIM, MEP & Multi-Physics Simulation</span>
+            </div>
+          </div>
+        </div>
+
         {/* Units Configuration */}
         <div className="bg-[#1a1c1f] p-4 rounded border border-[#282a2d] flex flex-col gap-3 shadow-md">
           <div className="flex items-center justify-between">

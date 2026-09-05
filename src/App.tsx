@@ -13,6 +13,7 @@ import { SystemSettingsView } from './components/views/SystemSettingsView';
 import { AiCopilotModal } from './components/AiCopilotModal';
 import { ValidationModal } from './components/ValidationModal';
 import { CommandPaletteModal } from './components/CommandPaletteModal';
+import { CadCommandLine } from './components/CadCommandLine';
 
 export default function App() {
   const [activeView, setActiveView] = useState<ActiveWorkbenchView>('workbench');
@@ -223,6 +224,15 @@ export default function App() {
           {activeView === 'system-settings' && <SystemSettingsView />}
         </div>
       </div>
+
+      {/* Docked CAD / BIM Interactive Command Console */}
+      <CadCommandLine
+        activeView={activeView}
+        onNavigateView={(view) => setActiveView(view)}
+        onExecuteCommand={(cmd) => {
+          console.log('CAD Command executed:', cmd);
+        }}
+      />
 
       {/* Engineering Copilot AI Dialog */}
       <AiCopilotModal
