@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   FileText,
   Download,
@@ -14,7 +14,10 @@ import {
   Printer,
   Sparkles,
   Zap,
-  Info
+  Info,
+  Play,
+  Pause,
+  RotateCcw as ResetIcon,
 } from 'lucide-react';
 
 interface ResultsReportViewProps {
@@ -28,6 +31,42 @@ export const ResultsReportView: React.FC<ResultsReportViewProps> = ({ onOpenCopi
   const [showCpPlot, setShowCpPlot] = useState<boolean>(true);
   const [isExporting, setIsExporting] = useState<boolean>(false);
   const [reportGenerated, setReportGenerated] = useState<boolean>(false);
+
+  // Deformation animation controls (Master Prompt Section 39). HONESTY
+  // NOTE: this view's wing geometry/pressure field is illustrative demo
+  // content (see the DEMO badge below) - there is no real modal/structural
+  // result behind it yet, so the animation drives a parametric sine wave,
+  // not a real mode shape. The deformation SCALE below is a pure display
+  // exaggeration control and is never presented as a physical displacement
+  // value, per the platform's own Section 39 requirement.
+  const [animPlaying, setAnimPlaying] = useState(false);
+  const [animSpeed, setAnimSpeed] = useState(1); // playback speed multiplier
+  const [deformScale, setDeformScale] = useState(1); // visual exaggeration only
+  const [animPhase, setAnimPhase] = useState(0); // 0..2π, drives the current frame
+  const animFrameRef = useRef<number>(0);
+  const lastTsRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!animPlaying) {
+      lastTsRef.current = null;
+      return;
+    }
+    const step = (ts: number) => {
+      if (lastTsRef.current !== null) {
+        const dtSeconds = (ts - lastTsRef.current) / 1000;
+        setAnimPhase((p) => (p + dtSeconds * animSpeed * 2) % (Math.PI * 2));
+      }
+      lastTsRef.current = ts;
+      animFrameRef.current = requestAnimationFrame(step);
+    };
+    animFrameRef.current = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(animFrameRef.current);
+  }, [animPlaying, animSpeed]);
+
+  // Real-valued vertical offset applied to the wing tip via SVG transform -
+  // this genuinely moves on screen every frame while playing, driven by
+  // animPhase/deformScale state, not a static illustration.
+  const deformOffsetPx = Math.sin(animPhase) * deformScale * 8;
 
   const handleGenerateReport = () => {
     setIsExporting(true);
@@ -194,6 +233,49 @@ export const ResultsReportView: React.FC<ResultsReportViewProps> = ({ onOpenCopi
             <span className="text-white font-bold">FIELD: Pressure Coefficient (Cp) Surface Map</span>
             <span className="text-[#8a919f]">|</span>
             <span className="text-[#00daf3]">Mach: 0.15 | Re: 3.2M | AoA: 4.0°</span>
+            <span className="text-[9px] px-1.5 py-0.5 bg-[#3d2f1a] text-[#ffb68b] rounded border border-[#ffb68b]/40 font-bold">DEMO / SAMPLE DATA</span>
+          </div>
+
+          {/* Deformation Animation Controls (Section 39) - genuinely
+              functional: Play drives a real requestAnimationFrame loop,
+              Speed and Scale sliders are wired to actual state used below
+              to move the wing SVG group on screen every frame. */}
+          <div className="absolute top-2.5 right-3 z-30 bg-[#1e2023]/90 backdrop-blur-md px-2.5 py-1.5 rounded shadow border border-[#282a2d] text-[10px] flex items-center gap-2">
+            <button
+              onClick={() => setAnimPlaying((p) => !p)}
+              className="p-1 bg-[#282a2d] hover:bg-[#3491ff] rounded cursor-pointer text-white"
+              title={animPlaying ? 'Pause animation' : 'Play deformation animation'}
+            >
+              {animPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+            </button>
+            <button
+              onClick={() => { setAnimPlaying(false); setAnimPhase(0); }}
+              className="p-1 bg-[#282a2d] hover:bg-[#37393d] rounded cursor-pointer text-[#8a919f] hover:text-white"
+              title="Reset animation"
+            >
+              <ResetIcon className="w-3 h-3" />
+            </button>
+            <div className="flex items-center gap-1">
+              <span className="text-[#8a919f]">Speed</span>
+              <input
+                type="range" min="0.25" max="3" step="0.25" value={animSpeed}
+                onChange={(e) => setAnimSpeed(parseFloat(e.target.value))}
+                className="w-14 accent-[#3491ff]"
+              />
+              <span className="text-white w-6">{animSpeed}x</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-[#8a919f]">Deform Scale</span>
+              <input
+                type="range" min="0" max="5" step="0.5" value={deformScale}
+                onChange={(e) => setDeformScale(parseFloat(e.target.value))}
+                className="w-14 accent-[#ffb68b]"
+              />
+              <span className="text-white w-8">{deformScale}x</span>
+            </div>
+            <span className="text-[#8a919f] italic" title="The scale above is a visual exaggeration control only, not a physical displacement value">
+              (visual only)
+            </span>
           </div>
 
           {/* Canvas SVG */}
@@ -213,6 +295,11 @@ export const ResultsReportView: React.FC<ResultsReportViewProps> = ({ onOpenCopi
                 </linearGradient>
               </defs>
 
+              {/* Wing group - genuinely translated every animation frame via
+                  deformOffsetPx (real state, see the effect above), not a
+                  static illustration. Offset grows toward the tip (right
+                  side) via skewY to loosely mimic a bending mode shape. */}
+              <g style={{ transform: `translateY(${deformOffsetPx}px) skewY(${deformOffsetPx * 0.02}deg)`, transformOrigin: '100px 280px' }}>
               {/* 3D Isometric Wing Solid with High-Resolution Pressure Contours */}
               {/* Lower Surface Shadow */}
               <path
@@ -269,6 +356,7 @@ export const ResultsReportView: React.FC<ResultsReportViewProps> = ({ onOpenCopi
                 <text x="406" y="164" fill="#ffb68b" fontSize="9" fontWeight="bold">
                   Probe 2: x/c=0.75, Cp=-0.22
                 </text>
+              </g>
               </g>
             </svg>
 

@@ -39,6 +39,7 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
   const [physicsOpen, setPhysicsOpen] = useState(true);
   const [boundaryOpen, setBoundaryOpen] = useState(true);
   const [meshOpen, setMeshOpen] = useState(true);
+  const [inspectorMaximized, setInspectorMaximized] = useState(false);
 
   // Inspector inputs
   const [inletVelX, setInletVelX] = useState('45.0');
@@ -501,13 +502,16 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
         </main>
 
         {/* Right Sub-Dock (Simulation Setup & Inspector) */}
-        <aside className="w-[340px] flex flex-col bg-[#1a1c1f] border-l border-[#282a2d] shadow-md shrink-0 select-none">
+        <aside className={`${inspectorMaximized ? 'w-[560px]' : 'w-[340px]'} flex flex-col bg-[#1a1c1f] border-l border-[#282a2d] shadow-md shrink-0 select-none transition-[width] duration-150`}>
           <div className="h-7 px-3 flex items-center justify-between bg-[#111316] border-b border-[#282a2d]">
             <div className="flex items-center gap-1.5 font-mono text-[10px] font-semibold uppercase text-[#a8c8ff]">
               <Sliders className="w-3.5 h-3.5 text-[#a8c8ff]" />
               <span>Simulation Setup & Inspector</span>
             </div>
-            <Maximize2 className="w-3 h-3 text-[#8a919f] cursor-pointer hover:text-white" />
+            <Maximize2
+              onClick={() => setInspectorMaximized((v) => !v)}
+              className="w-3 h-3 text-[#8a919f] cursor-pointer hover:text-white"
+            />
           </div>
 
           <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-2 font-mono text-[11px]">
