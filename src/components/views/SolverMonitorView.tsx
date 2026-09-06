@@ -1,18 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   TrendingUp,
   Play,
   Pause,
   RotateCcw,
-  CheckCircle2,
   Activity,
   Zap,
-  Sliders,
   Send,
   Cpu,
   BarChart3,
   Clock,
-  Square
+  Square,
+  AlertTriangle,
 } from 'lucide-react';
 import { SolverStatus } from '../../types';
 
@@ -21,9 +20,20 @@ interface SolverMonitorViewProps {
   onSetSolverStatus: (status: SolverStatus) => void;
   currentIteration: number;
   onSetCurrentIteration: (iter: number) => void;
-  onOpenResults?: () => void;
+  onOpenResults?: (results?: { pressureDropPa: number; wallShearStressPa: number }) => void;
   onOpenCopilot?: () => void;
 }
+
+type ResidualField = 'Ux' | 'Uy' | 'Uz' | 'p' | 'k' | 'epsilon';
+const TRACKED_FIELDS: ResidualField[] = ['Ux', 'Uy', 'Uz', 'p', 'k', 'epsilon'];
+const FIELD_COLORS: Record<ResidualField, string> = {
+  Ux: '#3491ff', Uy: '#00daf3', Uz: '#a8c8ff', p: '#ffb68b', k: '#34c759', epsilon: '#e76e00',
+};
+const CONVERGENCE_THRESHOLD = 1e-4; // matches SIMPLE.residualControl in the real fvSolution
+const MAX_ITERATIONS = 300; // matches end_time in openfoam_case_generator.py
+
+interface ResidualPoint { iteration: number; residual: number; }
+interface SolveResults { pressureDropPa: number; wallShearStressPa: number; }
 
 export const SolverMonitorView: React.FC<SolverMonitorViewProps> = ({
   solverStatus,
@@ -33,23 +43,103 @@ export const SolverMonitorView: React.FC<SolverMonitorViewProps> = ({
   onOpenResults,
   onOpenCopilot,
 }) => {
-  const maxIterations = 1000;
-  const [elapsedSeconds, setElapsedSeconds] = useState<number>(258); // 04:18
+  const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
+  const [history, setHistory] = useState<Record<ResidualField, ResidualPoint[]>>(
+    () => Object.fromEntries(TRACKED_FIELDS.map((f) => [f, []])) as Record<ResidualField, ResidualPoint[]>
+  );
+  const [latestResidual, setLatestResidual] = useState<Record<ResidualField, number | null>>(
+    () => Object.fromEntries(TRACKED_FIELDS.map((f) => [f, null])) as Record<ResidualField, number | null>
+  );
+  const [results, setResults] = useState<SolveResults | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const timerRef = useRef<any>(null);
 
-  // Solver iteration loop
   useEffect(() => {
-    let interval: any;
     if (solverStatus === 'running') {
-      interval = setInterval(() => {
-        setElapsedSeconds((s) => s + 1);
-        onSetCurrentIteration(Math.min(maxIterations, currentIteration + 1));
-        if (currentIteration >= maxIterations) {
-          onSetSolverStatus('converged');
-        }
-      }, 200);
+      timerRef.current = setInterval(() => setElapsedSeconds((s) => s + 1), 1000);
+    } else if (timerRef.current) {
+      clearInterval(timerRef.current);
     }
-    return () => clearInterval(interval);
-  }, [solverStatus, currentIteration, onSetCurrentIteration, onSetSolverStatus]);
+    return () => clearInterval(timerRef.current);
+  }, [solverStatus]);
+
+  const resetRun = useCallback(() => {
+    setHistory(Object.fromEntries(TRACKED_FIELDS.map((f) => [f, []])) as Record<ResidualField, ResidualPoint[]>);
+    setLatestResidual(Object.fromEntries(TRACKED_FIELDS.map((f) => [f, null])) as Record<ResidualField, number | null>);
+    setResults(null);
+    setErrorMessage(null);
+    setElapsedSeconds(0);
+    onSetCurrentIteration(0);
+  }, [onSetCurrentIteration]);
+
+  const handleStart = useCallback(() => {
+    resetRun();
+    onSetSolverStatus('running');
+
+    // Real WebSocket connection to the backend built in Priority 4 - every
+    // value rendered below comes from parsing the actual simpleFoam
+    // subprocess's live stdout on the server, not a local timer.
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${proto}//${window.location.host}/ws/solve/cfd/pipe-flow`);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      // Default pipe-flow parameters; a future pass can source these from
+      // the actual project's boundary-condition inputs instead of defaults.
+      ws.send(JSON.stringify({}));
+    };
+
+    ws.onmessage = (msg) => {
+      const evt = JSON.parse(msg.data);
+      switch (evt.event) {
+        case 'solver.iteration':
+          onSetCurrentIteration(evt.iteration);
+          break;
+        case 'solver.residual': {
+          const field = evt.field as ResidualField;
+          if (!TRACKED_FIELDS.includes(field)) break;
+          setLatestResidual((prev) => ({ ...prev, [field]: evt.residual }));
+          setHistory((prev) => ({
+            ...prev,
+            [field]: [...prev[field], { iteration: evt.iteration, residual: evt.residual }].slice(-500),
+          }));
+          break;
+        }
+        case 'simulation.completed':
+          setResults(evt.results);
+          onSetSolverStatus('converged');
+          break;
+        case 'simulation.failed':
+          setErrorMessage(evt.message || `Solve failed at stage: ${evt.stage}`);
+          onSetSolverStatus('idle');
+          break;
+        case 'simulation.cancelled':
+          onSetSolverStatus('idle');
+          break;
+        default:
+          break;
+      }
+    };
+
+    ws.onerror = () => {
+      setErrorMessage('Could not reach the solver backend over WebSocket. Is the backend/ service running?');
+      onSetSolverStatus('idle');
+    };
+  }, [onSetSolverStatus, onSetCurrentIteration, resetRun]);
+
+  const handleCancel = useCallback(() => {
+    // HONESTY NOTE: the real backend subprocess can be cancelled (closing
+    // the connection kills the solver process server-side, see
+    // openfoam_adapter.solve_pipe_flow_streaming's CancelledError handling)
+    // but cannot be truly paused-and-resumed - a partially-converged SIMPLE
+    // iteration can't be frozen and restarted from JS. We label this
+    // "Cancel", not "Pause", so the control does what it says.
+    wsRef.current?.close();
+    onSetSolverStatus('idle');
+  }, [onSetSolverStatus]);
+
+  useEffect(() => () => wsRef.current?.close(), []);
 
   const formatTime = (totalSec: number) => {
     const mins = Math.floor(totalSec / 60);
@@ -57,17 +147,17 @@ export const SolverMonitorView: React.FC<SolverMonitorViewProps> = ({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handleStart = () => onSetSolverStatus('running');
-  const handlePause = () => onSetSolverStatus('paused');
-  const handleReset = () => {
-    onSetSolverStatus('idle');
-    onSetCurrentIteration(0);
-    setElapsedSeconds(0);
+  // Real log-scale mapping of an actual residual value to a chart y-pixel,
+  // covering 10^0 (top) down to 10^-8 (bottom) over a 0-200 viewBox.
+  const residualToY = (residual: number) => {
+    const clamped = Math.max(1e-8, Math.min(1, residual));
+    const logVal = Math.log10(clamped); // 0 to -8
+    return 20 + (-logVal / 8) * 170; // 20px top margin, 190px bottom
   };
-  const handleForceConverge = () => {
-    onSetCurrentIteration(maxIterations);
-    onSetSolverStatus('converged');
-  };
+  const iterationToX = (iteration: number) => 40 + (iteration / MAX_ITERATIONS) * 550;
+
+  const buildPolyline = (field: ResidualField) =>
+    history[field].map((pt) => `${iterationToX(pt.iteration)},${residualToY(pt.residual)}`).join(' ');
 
   return (
     <div className="flex flex-col h-[calc(100vh-76px)] overflow-hidden bg-[#0c0e11] text-[#e2e2e6] select-none font-mono">
@@ -76,7 +166,7 @@ export const SolverMonitorView: React.FC<SolverMonitorViewProps> = ({
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 bg-[#1e2023] px-2 py-0.5 rounded border border-[#282a2d]">
             <Cpu className="w-3.5 h-3.5 text-[#00daf3]" />
-            <span className="text-[#e2e2e6] font-medium">Aero_Wing_Transonic_Run_01.foam</span>
+            <span className="text-[#e2e2e6] font-medium">Pipe Flow (DN100, 5m) — Real OpenFOAM Solve</span>
             <span className="text-[9px] px-1 py-0.2 bg-[#37393d] text-[#00daf3] rounded">simpleFoam</span>
           </div>
 
@@ -93,9 +183,9 @@ export const SolverMonitorView: React.FC<SolverMonitorViewProps> = ({
               />
               <span className="text-white font-bold">
                 {solverStatus === 'running'
-                  ? `RUNNING • Iter ${currentIteration} / ${maxIterations}`
+                  ? `RUNNING • Iter ${currentIteration} / ${MAX_ITERATIONS}`
                   : solverStatus === 'converged'
-                  ? 'SOLVER CONVERGED • Criterion 1.0e-5 Met'
+                  ? 'SOLVER COMPLETED'
                   : 'SOLVER IDLE'}
               </span>
             </div>
@@ -104,7 +194,6 @@ export const SolverMonitorView: React.FC<SolverMonitorViewProps> = ({
               <Clock className="w-3 h-3 text-[#a8c8ff]" />
               <span>Elapsed: {formatTime(elapsedSeconds)}</span>
             </div>
-            <span className="hidden md:inline text-[#8a919f]">| 16 MPI Ranks (AVX-512)</span>
           </div>
         </div>
 
@@ -112,11 +201,12 @@ export const SolverMonitorView: React.FC<SolverMonitorViewProps> = ({
         <div className="flex items-center gap-1.5">
           {solverStatus === 'running' ? (
             <button
-              onClick={handlePause}
+              onClick={handleCancel}
               className="flex items-center gap-1 px-2.5 py-1 bg-[#e76e00] hover:bg-[#ff8b24] text-black font-bold text-[10px] rounded cursor-pointer shadow"
+              title="Cancels the real running solver process - a SIMPLE iteration can't be paused and resumed"
             >
-              <Pause className="w-3 h-3" />
-              <span>Pause</span>
+              <Square className="w-3 h-3" />
+              <span>Cancel</span>
             </button>
           ) : (
             <button
@@ -124,22 +214,14 @@ export const SolverMonitorView: React.FC<SolverMonitorViewProps> = ({
               className="flex items-center gap-1 px-2.5 py-1 bg-[#3491ff] hover:bg-[#a8c8ff] hover:text-[#003061] text-white font-bold text-[10px] rounded cursor-pointer shadow"
             >
               <Play className="w-3 h-3" />
-              <span>{solverStatus === 'paused' ? 'Resume' : 'Start Solver'}</span>
+              <span>Start Solver (Real OpenFOAM)</span>
             </button>
           )}
 
           <button
-            onClick={handleForceConverge}
-            className="px-2 py-1 bg-[#1e2023] hover:bg-[#282a2d] text-[#00daf3] border border-[#00daf3]/40 text-[10px] rounded cursor-pointer"
-            title="Force Full Convergence"
-          >
-            Converge
-          </button>
-
-          <button
-            onClick={handleReset}
+            onClick={resetRun}
             className="p-1 bg-[#1e2023] hover:bg-[#282a2d] text-[#8a919f] hover:text-white rounded cursor-pointer"
-            title="Reset Solver State"
+            title="Clear results"
           >
             <RotateCcw className="w-3.5 h-3.5" />
           </button>
@@ -154,247 +236,148 @@ export const SolverMonitorView: React.FC<SolverMonitorViewProps> = ({
         </div>
       </div>
 
+      {errorMessage && (
+        <div className="px-3 py-2 bg-[#3d1f1f] border-b border-[#5a2a2a] text-[#ffb4ab] text-[11px] flex items-center gap-2">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+          <span>{errorMessage}</span>
+        </div>
+      )}
+
       {/* Main Content Area */}
       <div className="flex-1 flex overflow-hidden relative">
-        {/* Left Sub-Dock (Residuals Table & Real-Time Aerodynamic Coefficients) */}
+        {/* Left Sub-Dock: real per-field latest residuals */}
         <section className="w-[300px] flex flex-col bg-[#1a1c1f] border-r border-[#282a2d] shadow-md shrink-0">
           <div className="h-7 px-3 flex items-center justify-between bg-[#111316] border-b border-[#282a2d] text-[10px] text-[#8a919f]">
             <span className="font-semibold text-white uppercase">Convergence Equations</span>
-            <span className="text-[#00daf3]">6 Variables</span>
+            <span className="text-[#00daf3]">{TRACKED_FIELDS.length} Variables (Real)</span>
           </div>
 
           <div className="flex-1 overflow-y-auto p-2.5 flex flex-col gap-2 text-[11px]">
-            {/* Table of Residuals */}
             <div className="flex flex-col gap-1">
-              {[
-                { name: 'Ux (m/s)', cur: '3.42e-05', target: '1.00e-05', status: 'CONVERGING', col: '#3491ff' },
-                { name: 'Uy (m/s)', cur: '2.18e-05', target: '1.00e-05', status: 'CONVERGING', col: '#00daf3' },
-                { name: 'Uz (m/s)', cur: '4.89e-06', target: '1.00e-05', status: 'CONVERGED', col: '#34c759' },
-                { name: 'p (Pressure)', cur: '8.74e-05', target: '1.00e-04', status: 'CONVERGED', col: '#ffb68b' },
-                { name: 'k (Turb. Energy)', cur: '1.25e-05', target: '1.00e-05', status: 'CONVERGING', col: '#a8c8ff' },
-                { name: 'ω (Dissipation)', cur: '9.81e-06', target: '1.00e-05', status: 'CONVERGED', col: '#34c759' },
-              ].map((eq, i) => (
-                <div key={i} className="p-1.5 bg-[#1e2023] rounded border border-[#282a2d] flex flex-col gap-0.5">
-                  <div className="flex items-center justify-between text-[10px]">
-                    <div className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: eq.col }} />
-                      <span className="font-bold text-white">{eq.name}</span>
-                    </div>
-                    <span
-                      className={`text-[8px] px-1 py-0.2 rounded font-bold ${
-                        eq.status === 'CONVERGED'
-                          ? 'bg-[#111316] text-[#34c759] border border-[#34c759]/40'
+              {TRACKED_FIELDS.map((field) => {
+                const val = latestResidual[field];
+                const converged = val !== null && val < CONVERGENCE_THRESHOLD;
+                return (
+                  <div key={field} className="p-1.5 bg-[#1e2023] rounded border border-[#282a2d] flex flex-col gap-0.5">
+                    <div className="flex items-center justify-between text-[10px]">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: FIELD_COLORS[field] }} />
+                        <span className="font-bold text-white">{field}</span>
+                      </div>
+                      <span
+                        className={`text-[8px] px-1 py-0.2 rounded font-bold ${
+                          val === null ? 'bg-[#111316] text-[#8a919f]'
+                          : converged ? 'bg-[#111316] text-[#34c759] border border-[#34c759]/40'
                           : 'bg-[#111316] text-[#00daf3]'
-                      }`}
-                    >
-                      {eq.status}
-                    </span>
+                        }`}
+                      >
+                        {val === null ? 'WAITING' : converged ? 'CONVERGED' : 'CONVERGING'}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-[9px] text-[#8a919f] pt-0.5">
+                      <span>Cur: <strong className="text-white">{val === null ? '—' : val.toExponential(2)}</strong></span>
+                      <span>Threshold: {CONVERGENCE_THRESHOLD.toExponential(0)}</span>
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between text-[9px] text-[#8a919f] pt-0.5">
-                    <span>Cur: <strong className="text-white">{eq.cur}</strong></span>
-                    <span>Threshold: {eq.target}</span>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
-            {/* Real-Time Aerodynamic Coefficients */}
+            {/* Real solved results, once available */}
             <div className="bg-[#1e2023] p-2 rounded border border-[#282a2d] flex flex-col gap-1.5 text-[10px]">
-              <span className="text-[#8a919f] text-[9px] uppercase font-bold">Aerodynamic Coefficients (Live)</span>
-              <div className="grid grid-cols-2 gap-1.5">
-                <div className="bg-[#111316] p-1.5 rounded border border-[#282a2d]">
-                  <span className="text-[8px] text-[#8a919f] block">LIFT (Cl)</span>
-                  <span className="text-[14px] text-[#00daf3] font-bold">0.5842</span>
-                  <span className="text-[8px] text-[#34c759] block">±0.0004 steady</span>
-                </div>
-                <div className="bg-[#111316] p-1.5 rounded border border-[#282a2d]">
-                  <span className="text-[8px] text-[#8a919f] block">DRAG (Cd)</span>
-                  <span className="text-[14px] text-[#ffb68b] font-bold">0.0248</span>
-                  <span className="text-[8px] text-[#34c759] block">±0.0001 steady</span>
-                </div>
-              </div>
-              <div className="flex items-center justify-between bg-[#111316] p-1.5 rounded border border-[#282a2d] mt-0.5">
-                <span className="text-[#c0c6d6]">L/D Efficiency (Cl/Cd):</span>
-                <span className="text-white font-bold text-[12px]">23.55</span>
-              </div>
-              <div className="flex items-center justify-between bg-[#111316] p-1.5 rounded border border-[#282a2d]">
-                <span className="text-[#c0c6d6]">Pitching Moment (Cm):</span>
-                <span className="text-[#a8c8ff] font-bold text-[12px]">-0.0412</span>
-              </div>
+              <span className="text-[#8a919f] text-[9px] uppercase font-bold">Solved Results (Real)</span>
+              {results ? (
+                <>
+                  <div className="flex items-center justify-between bg-[#111316] p-1.5 rounded border border-[#282a2d]">
+                    <span className="text-[#c0c6d6]">Pressure Drop:</span>
+                    <span className="text-[#00daf3] font-bold text-[12px]">{results.pressureDropPa.toFixed(1)} Pa</span>
+                  </div>
+                  <div className="flex items-center justify-between bg-[#111316] p-1.5 rounded border border-[#282a2d]">
+                    <span className="text-[#c0c6d6]">Wall Shear Stress:</span>
+                    <span className="text-[#a8c8ff] font-bold text-[12px]">{results.wallShearStressPa.toFixed(2)} Pa</span>
+                  </div>
+                </>
+              ) : (
+                <span className="text-[#8a919f] text-[10px] italic">Run the solver to see real results here.</span>
+              )}
             </div>
-          </div>
-
-          <div className="h-7 px-2.5 flex items-center justify-between bg-[#111316] border-t border-[#282a2d] text-[#8a919f] text-[10px]">
-            <span>Courant Number (CFL): 0.62</span>
-            <span className="text-[#34c759]">STABLE</span>
           </div>
         </section>
 
-        {/* Center: Live Convergence Plot & In-situ Field Visualization */}
+        {/* Center: real live convergence plot built from actual data */}
         <main className="flex-1 flex flex-col bg-[#0c0e11] overflow-hidden">
-          {/* Upper Half: Residual History Curves */}
-          <div className="h-1/2 p-3 flex flex-col border-b border-[#282a2d] relative">
+          <div className="h-full p-3 flex flex-col relative">
             <div className="flex items-center justify-between mb-1 text-[11px]">
               <div className="flex items-center gap-2">
                 <TrendingUp className="w-3.5 h-3.5 text-[#00daf3]" />
-                <span className="text-white font-bold">Residual Convergence History (Logarithmic)</span>
+                <span className="text-white font-bold">Residual Convergence History (Real, Logarithmic)</span>
               </div>
-              <div className="flex items-center gap-3 text-[9px]">
-                <span className="flex items-center gap-1 text-[#3491ff]"><span className="w-2 h-0.5 bg-[#3491ff]" /> Ux</span>
-                <span className="flex items-center gap-1 text-[#00daf3]"><span className="w-2 h-0.5 bg-[#00daf3]" /> Uy</span>
-                <span className="flex items-center gap-1 text-[#ffb68b]"><span className="w-2 h-0.5 bg-[#ffb68b]" /> p</span>
-                <span className="flex items-center gap-1 text-[#a8c8ff]"><span className="w-2 h-0.5 bg-[#a8c8ff]" /> k/ω</span>
+              <div className="flex items-center gap-3 text-[9px] flex-wrap">
+                {TRACKED_FIELDS.map((field) => (
+                  <span key={field} className="flex items-center gap-1" style={{ color: FIELD_COLORS[field] }}>
+                    <span className="w-2 h-0.5" style={{ backgroundColor: FIELD_COLORS[field] }} /> {field}
+                  </span>
+                ))}
               </div>
             </div>
 
-            {/* Plot SVG */}
             <div className="flex-1 bg-[#1a1c1f] rounded p-2 relative border border-[#282a2d] overflow-hidden">
               <svg className="w-full h-full" viewBox="0 0 600 200" preserveAspectRatio="none">
-                {/* Horizontal Grid lines (10^0 to 10^-6) */}
-                {[0, 1, 2, 3, 4, 5].map((level) => (
+                {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((level) => (
                   <g key={level}>
-                    <line x1="40" y1={30 + level * 30} x2="590" y2={30 + level * 30} stroke="#282a2d" strokeWidth="1" strokeDasharray="3 3" />
-                    <text x="5" y={33 + level * 30} fill="#8a919f" fontSize="8" fontFamily="JetBrains Mono">
+                    <line x1="40" y1={20 + (level / 8) * 170} x2="590" y2={20 + (level / 8) * 170} stroke="#282a2d" strokeWidth="1" strokeDasharray="3 3" />
+                    <text x="5" y={23 + (level / 8) * 170} fill="#8a919f" fontSize="8" fontFamily="JetBrains Mono">
                       10⁻{level}
                     </text>
                   </g>
                 ))}
 
-                {/* Convergence Criteria Line at 10^-5 */}
-                <line x1="40" y1="180" x2="590" y2="180" stroke="#34c759" strokeWidth="1.2" strokeDasharray="4 2" />
-                <text x="440" y="175" fill="#34c759" fontSize="8" fontFamily="JetBrains Mono">
-                  Criterion Threshold: 1.00e-05
+                <line
+                  x1="40" y1={residualToY(CONVERGENCE_THRESHOLD)} x2="590" y2={residualToY(CONVERGENCE_THRESHOLD)}
+                  stroke="#34c759" strokeWidth="1.2" strokeDasharray="4 2"
+                />
+                <text x="420" y={residualToY(CONVERGENCE_THRESHOLD) - 4} fill="#34c759" fontSize="8" fontFamily="JetBrains Mono">
+                  Criterion Threshold: {CONVERGENCE_THRESHOLD.toExponential(0)}
                 </text>
 
-                {/* Simulated Residuals Curves */}
-                {/* Ux */}
-                <path
-                  d="M 40 35 Q 120 70, 200 110 T 360 145 T 500 168 T 590 174"
-                  fill="none"
-                  stroke="#3491ff"
-                  strokeWidth="2"
-                />
-                {/* Uy */}
-                <path
-                  d="M 40 40 Q 140 85, 220 120 T 380 152 T 510 170 T 590 178"
-                  fill="none"
-                  stroke="#00daf3"
-                  strokeWidth="2"
-                />
-                {/* p */}
-                <path
-                  d="M 40 30 Q 100 65, 180 95 T 320 125 T 450 148 T 590 162"
-                  fill="none"
-                  stroke="#ffb68b"
-                  strokeWidth="2"
-                />
-                {/* k/omega */}
-                <path
-                  d="M 40 45 Q 160 90, 240 130 T 400 160 T 520 175 T 590 182"
-                  fill="none"
-                  stroke="#a8c8ff"
-                  strokeWidth="1.5"
-                  strokeDasharray="3 2"
-                />
+                {TRACKED_FIELDS.map((field) => (
+                  history[field].length > 1 && (
+                    <polyline
+                      key={field}
+                      points={buildPolyline(field)}
+                      fill="none"
+                      stroke={FIELD_COLORS[field]}
+                      strokeWidth="1.5"
+                    />
+                  )
+                ))}
 
-                {/* Current Iteration Indicator Line */}
-                <line
-                  x1={40 + (currentIteration / maxIterations) * 550}
-                  y1="20"
-                  x2={40 + (currentIteration / maxIterations) * 550}
-                  y2="190"
-                  stroke="#00daf3"
-                  strokeWidth="1.5"
-                />
-                <circle
-                  cx={40 + (currentIteration / maxIterations) * 550}
-                  cy="174"
-                  r="3.5"
-                  fill="#00daf3"
-                />
+                {history.Ux.length === 0 && solverStatus !== 'running' && (
+                  <text x="200" y="100" fill="#8a919f" fontSize="11" fontFamily="JetBrains Mono">
+                    Click "Start Solver" to run a real OpenFOAM solve and see live residuals
+                  </text>
+                )}
               </svg>
-            </div>
-          </div>
-
-          {/* Lower Half: In-Situ Flow Field Probe Visualization */}
-          <div className="h-1/2 p-3 flex flex-col relative">
-            <div className="flex items-center justify-between mb-1 text-[11px]">
-              <div className="flex items-center gap-2">
-                <Activity className="w-3.5 h-3.5 text-[#00daf3]" />
-                <span className="text-white font-bold">In-Situ Solution Field (Iterative Pressure & Velocity Contour)</span>
-              </div>
-              <span className="text-[9px] text-[#00daf3] bg-[#1a1c1f] px-1.5 py-0.5 rounded border border-[#282a2d]">
-                Live Field Probe @ Z = 60.0 mm
-              </span>
-            </div>
-
-            <div className="flex-1 bg-[#1a1c1f] rounded relative border border-[#282a2d] flex items-center justify-center overflow-hidden">
-              <svg className="w-full h-full" viewBox="0 0 600 200">
-                <defs>
-                  <linearGradient id="pressure-contour" x1="0%" y1="0%" x2="100%" y2="0%">
-                    <stop offset="0%" stopColor="#3491ff" stopOpacity="0.85" />
-                    <stop offset="30%" stopColor="#00daf3" stopOpacity="0.8" />
-                    <stop offset="55%" stopColor="#ffb68b" stopOpacity="0.75" />
-                    <stop offset="100%" stopColor="#3491ff" stopOpacity="0.5" />
-                  </linearGradient>
-                  <radialGradient id="suction-peak" cx="35%" cy="30%" r="40%">
-                    <stop offset="0%" stopColor="#00daf3" stopOpacity="0.7" />
-                    <stop offset="100%" stopColor="#00daf3" stopOpacity="0" />
-                  </radialGradient>
-                </defs>
-
-                {/* Stagnation pressure zone at LE */}
-                <ellipse cx="140" cy="100" rx="35" ry="45" fill="#ffb68b" fillOpacity="0.4" />
-
-                {/* Suction peak over upper surface */}
-                <ellipse cx="260" cy="70" rx="90" ry="40" fill="url(#suction-peak)" />
-
-                {/* Wake field downstream */}
-                <path d="M 450 95 C 480 85, 540 80, 580 75 L 580 125 C 540 120, 480 115, 450 105 Z" fill="#3491ff" fillOpacity="0.3" />
-
-                {/* NACA 0012 Profile */}
-                <path
-                  d="M 150 100 C 190 40, 320 50, 450 100 C 330 130, 200 140, 150 100 Z"
-                  fill="#111316"
-                  stroke="#e2e2e6"
-                  strokeWidth="2"
-                />
-
-                {/* Velocity Streamlines */}
-                <path d="M 50 60 C 140 45, 250 35, 400 65 C 480 80, 550 85, 580 90" fill="none" stroke="#00daf3" strokeWidth="1" strokeDasharray="3 2" />
-                <path d="M 50 100 C 120 95, 145 98, 150 100" fill="none" stroke="#ffb68b" strokeWidth="1" />
-                <path d="M 50 140 C 140 155, 250 165, 400 135 C 480 120, 550 115, 580 110" fill="none" stroke="#00daf3" strokeWidth="1" strokeDasharray="3 2" />
-
-                {/* Probe Annotation */}
-                <text x="120" y="160" fill="#ffb68b" fontSize="9">Stagnation: +1,240 Pa</text>
-                <text x="230" y="30" fill="#00daf3" fontSize="9">Suction Peak: -2,850 Pa</text>
-              </svg>
-
-              {/* Legend */}
-              <div className="absolute bottom-2 right-2 bg-[#111316]/90 px-2 py-1 rounded border border-[#282a2d] text-[8px] flex items-center gap-2">
-                <span className="text-[#00daf3]">Min: -2850 Pa</span>
-                <div className="w-20 h-2 bg-gradient-to-r from-[#00daf3] via-[#3491ff] to-[#ffb68b] rounded" />
-                <span className="text-[#ffb68b]">Max: +1240 Pa</span>
-              </div>
             </div>
           </div>
         </main>
 
-        {/* Right Sub-Dock: Numerical Schemes & Relaxation */}
+        {/* Right Sub-Dock: numerical schemes actually used by the real case
+            (see backend/app/openfoam_case_generator.py - kept in sync with
+            that file, not independently invented values) */}
         <aside className="w-[320px] flex flex-col bg-[#1a1c1f] border-l border-[#282a2d] shadow-md shrink-0 select-none">
           <div className="h-7 px-3 flex items-center justify-between bg-[#111316] border-b border-[#282a2d] text-[10px] text-[#8a919f]">
             <span className="font-semibold text-white uppercase">Discretization & Schemes</span>
-            <span className="text-[#00daf3]">fvSchemes</span>
+            <span className="text-[#00daf3]">fvSchemes (Real)</span>
           </div>
 
           <div className="flex-1 overflow-y-auto p-2.5 flex flex-col gap-2.5 text-[11px]">
-            {/* Numerical Schemes */}
             <div className="bg-[#1e2023] p-2 rounded border border-[#282a2d] flex flex-col gap-1.5 text-[10px]">
               <span className="text-[#8a919f] text-[9px] uppercase font-bold">Convection Schemes</span>
               <div className="flex items-center justify-between">
                 <span className="text-[#c0c6d6]">div(phi, U):</span>
                 <span className="text-white bg-[#111316] px-1.5 py-0.5 rounded border border-[#282a2d]">
-                  bounded Gauss linearUpwind
+                  bounded Gauss upwind
                 </span>
               </div>
               <div className="flex items-center justify-between">
@@ -404,54 +387,49 @@ export const SolverMonitorView: React.FC<SolverMonitorViewProps> = ({
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-[#c0c6d6]">div(phi, omega):</span>
+                <span className="text-[#c0c6d6]">div(phi, epsilon):</span>
                 <span className="text-white bg-[#111316] px-1.5 py-0.5 rounded border border-[#282a2d]">
                   bounded Gauss upwind
                 </span>
               </div>
             </div>
 
-            {/* Relaxation Factors */}
             <div className="bg-[#1e2023] p-2 rounded border border-[#282a2d] flex flex-col gap-1.5 text-[10px]">
               <span className="text-[#8a919f] text-[9px] uppercase font-bold">Under-Relaxation Factors</span>
               <div className="grid grid-cols-2 gap-1.5">
                 <div className="flex items-center justify-between bg-[#111316] px-2 py-1 rounded">
-                  <span className="text-[#8a919f]">Pressure (p):</span>
-                  <span className="text-[#00daf3] font-bold">0.30</span>
-                </div>
-                <div className="flex items-center justify-between bg-[#111316] px-2 py-1 rounded">
                   <span className="text-[#8a919f]">Velocity (U):</span>
-                  <span className="text-[#00daf3] font-bold">0.70</span>
+                  <span className="text-[#00daf3] font-bold">0.90</span>
                 </div>
                 <div className="flex items-center justify-between bg-[#111316] px-2 py-1 rounded">
-                  <span className="text-[#8a919f]">Turb. (k):</span>
-                  <span className="text-[#00daf3] font-bold">0.70</span>
-                </div>
-                <div className="flex items-center justify-between bg-[#111316] px-2 py-1 rounded">
-                  <span className="text-[#8a919f]">Dissipation (ω):</span>
-                  <span className="text-[#00daf3] font-bold">0.70</span>
+                  <span className="text-[#8a919f]">Turb. (k, ε):</span>
+                  <span className="text-[#00daf3] font-bold">0.90</span>
                 </div>
               </div>
+              <span className="text-[8px] text-[#8a919f] italic">SIMPLE consistent (SIMPLEC) mode — see fvSolution</span>
             </div>
 
-            {/* Matrix Solvers */}
             <div className="bg-[#1e2023] p-2 rounded border border-[#282a2d] flex flex-col gap-1 text-[10px]">
               <span className="text-[#8a919f] text-[9px] uppercase font-bold">Matrix Solvers (fvSolution)</span>
               <div className="flex items-center justify-between">
                 <span className="text-[#8a919f]">Pressure Solver:</span>
-                <span className="text-white">GAMG (Agglomeration: faceAreaPair)</span>
+                <span className="text-white">GAMG (GaussSeidel smoother)</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-[#8a919f]">Velocity Solver:</span>
-                <span className="text-white">smoothSolver (symGaussSeidel)</span>
+                <span className="text-[#8a919f]">U / k / epsilon Solver:</span>
+                <span className="text-white">smoothSolver (GaussSeidel)</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[#8a919f]">Turbulence Model:</span>
+                <span className="text-white">RAS kEpsilon</span>
               </div>
             </div>
 
-            {/* CTA to view results */}
             <div className="pt-2">
               <button
-                onClick={onOpenResults}
-                className="w-full py-2 bg-[#3491ff] hover:bg-[#a8c8ff] hover:text-[#003061] text-white font-bold text-[11px] rounded shadow transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
+                onClick={() => onOpenResults?.(results ?? undefined)}
+                disabled={!results}
+                className="w-full py-2 bg-[#3491ff] hover:bg-[#a8c8ff] hover:text-[#003061] disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-[11px] rounded shadow transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 <BarChart3 className="w-3.5 h-3.5" />
                 <span>View Full Post-Processing Results</span>

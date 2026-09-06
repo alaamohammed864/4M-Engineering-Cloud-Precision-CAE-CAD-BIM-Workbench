@@ -18,6 +18,7 @@ import { CadCommandLine } from './components/CadCommandLine';
 export default function App() {
   const [activeView, setActiveView] = useState<ActiveWorkbenchView>('workbench');
   const [isTreeCollapsed, setIsTreeCollapsed] = useState<boolean>(false);
+  const [selectedEntity, setSelectedEntity] = useState<string | null>(null);
   const [isCopilotOpen, setIsCopilotOpen] = useState<boolean>(false);
   const [isValidationOpen, setIsValidationOpen] = useState<boolean>(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState<boolean>(false);
@@ -148,11 +149,30 @@ export default function App() {
       <div className={`${userMode === 'beginner' ? 'pt-0' : 'pt-[76px]'} flex flex-1 overflow-hidden relative`}>
         {/* Left Collapsible Model Tree (Shown on views where hierarchy is primary) */}
         {(activeView === 'workbench' || activeView === 'mesh-generator' || activeView === 'results-and-reports') && (
+          <>
           <LeftModelTree
             collapsed={isTreeCollapsed}
             onToggleCollapse={() => setIsTreeCollapsed(!isTreeCollapsed)}
-            onSelectEntity={(name) => console.log('Selected entity from tree:', name)}
+            onSelectEntity={(name) => setSelectedEntity(name)}
           />
+          {selectedEntity && (
+            <div
+              className={`fixed bottom-3 z-50 bg-[#1a1c1f] border border-[#3491ff]/50 rounded shadow-xl px-3 py-2 text-[11px] font-mono flex items-center gap-3 ${
+                isTreeCollapsed ? (isRtl ? 'right-14' : 'left-14') : (isRtl ? 'right-[252px]' : 'left-[252px]')
+              }`}
+            >
+              <span className="text-[#8a919f]">Selected:</span>
+              <span className="text-white font-bold">{selectedEntity}</span>
+              <button
+                onClick={() => setSelectedEntity(null)}
+                className="text-[#8a919f] hover:text-white ml-2 cursor-pointer"
+                title="Clear selection"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+          </>
         )}
 
         {/* Viewport Content Area */}
