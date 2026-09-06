@@ -44,6 +44,10 @@ export const MeshGeneratorView: React.FC<MeshGeneratorViewProps> = ({
   const [meshProgress, setMeshProgress] = useState<number>(100);
   const [clipZ, setClipZ] = useState<number>(50);
 
+  // HONESTY NOTE: this simulates a meshing progress UI locally (setTimeout
+  // chain) - there is no real Gmsh process behind it. See the DEMO badge
+  // rendered above. Real mesh generation exists today via the OpenFOAM
+  // (blockMesh) and CalculiX pipelines in backend/app/ (Priority 1).
   const handleGenerateMesh = () => {
     setIsGenerating(true);
     setMeshProgress(15);
@@ -63,6 +67,7 @@ export const MeshGeneratorView: React.FC<MeshGeneratorViewProps> = ({
           <div className="flex items-center gap-1.5 bg-[#1e2023] px-2 py-0.5 rounded border border-[#282a2d]">
             <Grid className="w-3.5 h-3.5 text-[#00daf3]" />
             <span className="text-[#e2e2e6] font-medium">WING_EXTRUDE_SOLID_01 [Gmsh 3D Mesh]</span>
+            <span className="text-[9px] px-1.5 py-0.5 bg-[#3d2f1a] text-[#ffb68b] rounded border border-[#ffb68b]/40 font-bold" title="This meshing UI is a demo simulation - no Gmsh backend service is wired in yet. Real meshing exists today only inside the OpenFOAM (blockMesh) and CalculiX pipelines built in Priority 1.">DEMO — Gmsh backend not yet integrated</span>
             <span className="text-[9px] px-1 py-0.2 bg-[#37393d] text-[#c0c6d6] rounded">AP242</span>
           </div>
 

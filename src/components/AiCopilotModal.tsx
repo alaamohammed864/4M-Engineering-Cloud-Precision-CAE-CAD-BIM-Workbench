@@ -28,7 +28,7 @@ export const AiCopilotModal: React.FC<AiCopilotModalProps> = ({
   const [messages, setMessages] = useState<Array<{ role: 'user' | 'assistant'; text: string; action?: string }>>([
     {
       role: 'assistant',
-      text: 'Hello Engineer. I am 4M Engineering Copilot. I can assist with the real CalculiX FEM beam solver, analytical pipe flow formulas, design standards, and an upcoming OpenFOAM CFD solver integration (planned). How can I assist your study today?',
+      text: 'Hello Engineer. I am 4M Engineering Copilot. I can assist with the real CalculiX FEM beam solver and the real OpenFOAM CFD pipe-flow solver, plus the analytical formula calculators and design standards. How can I assist your study today?',
     },
   ]);
 
@@ -137,7 +137,7 @@ export const AiCopilotModal: React.FC<AiCopilotModalProps> = ({
           {isLoading && (
             <div className="flex items-center gap-2 text-[#00daf3] text-[10px] bg-[#1e2023] p-2 rounded w-fit border border-[#282a2d]">
               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              <span>Analyzing geometric topology and running engineering calculation engine...</span>
+              <span>Waiting for Copilot response...</span>
             </div>
           )}
         </div>
