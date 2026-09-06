@@ -440,13 +440,14 @@ export const GeometrySketchView: React.FC<GeometrySketchViewProps> = ({
                 stroke={solverState === 'over' ? '#ffb4ab' : solverState === 'under' ? '#ffb68b' : '#00daf3'}
                 strokeWidth="2.5"
                 className="cursor-pointer hover:stroke-white"
+                onClick={() => openDimensionEditor('lower_profile_offset', 45.0, 'mm')}
               />
 
               {/* Concentric Bores */}
-              <circle cx="410" cy="360" r="14" fill="#1e2023" stroke="#00daf3" strokeWidth="2" className="cursor-pointer hover:stroke-white" />
+              <circle cx="410" cy="360" r="14" fill="#1e2023" stroke="#00daf3" strokeWidth="2" className="cursor-pointer hover:stroke-white" onClick={() => openDimensionEditor('bore_1_diameter', 28.0, 'mm')} />
               <circle cx="410" cy="360" r="2" fill="#00daf3" />
 
-              <circle cx="280" cy="275" r="18" fill="#1e2023" stroke="#00daf3" strokeWidth="2" className="cursor-pointer hover:stroke-white" />
+              <circle cx="280" cy="275" r="18" fill="#1e2023" stroke="#00daf3" strokeWidth="2" className="cursor-pointer hover:stroke-white" onClick={() => openDimensionEditor('bore_2_diameter', 36.0, 'mm')} />
               <circle cx="280" cy="275" r="2" fill="#00daf3" />
 
               {/* Spline Control Polygon handles */}
