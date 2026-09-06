@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import Viewer3D from '../viewer/Viewer3D';
+import type { ViewerDisplayMode, CameraPreset } from '../viewer/Viewer3D';
 import {
   Layers,
   Box,
@@ -52,6 +54,14 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
   // Shading mode & selection filter
   const [shadingMode, setShadingMode] = useState<'smooth' | 'flat' | 'wire' | 'xray'>('smooth');
   const [selectionTarget, setSelectionTarget] = useState<'body' | 'face' | 'edge' | 'vertex'>('face');
+  const [cameraPreset, setCameraPreset] = useState<CameraPreset>('iso');
+
+  // Real display-mode mapping for the WebGL viewer below - 'smooth'/'flat'
+  // both render as solid shading (no separate flat-shading pass implemented
+  // yet), 'wire' is real wireframe-only, 'xray' shows solid+wireframe
+  // together as an approximation of an X-ray look.
+  const viewerDisplayMode: ViewerDisplayMode =
+    shadingMode === 'wire' ? 'wireframe' : shadingMode === 'xray' ? 'solid+wireframe' : 'solid';
 
   return (
     <div className="flex flex-col h-[calc(100vh-76px)] overflow-hidden bg-[#0c0e11] text-[#e2e2e6] select-none">
@@ -321,12 +331,12 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-[#00daf3] animate-pulse" />
               <span className="text-white font-medium text-[11px]">
-                Phase 1 Testing Viewport — Synthetic Preview Model Active. Real OpenCASCADE geometry pipeline activates in Phase 2.
+                Demo geometry (real OpenCASCADE import pipeline available via Geometry
+                Import — Priority 6).
               </span>
             </div>
             <div className="hidden sm:flex items-center gap-3 text-[10px]">
-              <span className="text-[#00daf3]">GL_RENDERER: WebGL2 Canvas</span>
-              <span className="px-1.5 py-0.5 bg-[#111316] text-[#a8c8ff] rounded border border-[#282a2d]">FPS: 60.0</span>
+              <span className="text-[#00daf3]">Real WebGL (Three.js / R3F)</span>
             </div>
           </div>
 
@@ -387,112 +397,49 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
             </div>
           </div>
 
-          {/* Interactive SVG Viewport Canvas */}
-          <div className="relative w-full h-full flex items-center justify-center select-none overflow-hidden cursor-crosshair">
-            {/* Scientific Grid Pattern */}
-            <svg className="absolute inset-0 w-full h-full pointer-events-none" xmlns="http://www.w3.org/2000/svg">
-              <defs>
-                <pattern id="workbench-grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                  <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e2023" strokeWidth="0.75" />
-                </pattern>
-                <radialGradient id="cae-glow-wb" cx="50%" cy="50%" r="50%">
-                  <stop offset="0%" stopColor="#3491ff" stopOpacity="0.15" />
-                  <stop offset="70%" stopColor="#00daf3" stopOpacity="0.04" />
-                  <stop offset="100%" stopColor="#0c0e11" stopOpacity="0" />
-                </radialGradient>
-              </defs>
-              <rect width="100%" height="100%" fill="url(#workbench-grid)" />
-              <rect width="100%" height="100%" fill="url(#cae-glow-wb)" />
-              <line x1="10%" y1="52%" x2="90%" y2="52%" stroke="#333538" strokeDasharray="3 3" />
-              <line x1="50%" y1="15%" x2="50%" y2="85%" stroke="#333538" strokeDasharray="3 3" />
-            </svg>
-
-            {/* 3D NACA 0012 Airfoil CAD Representation */}
-            <div className="relative w-[560px] h-[360px] flex items-center justify-center">
-              <svg className="w-full h-full drop-shadow-[0_20px_35px_rgba(0,0,0,0.85)]" viewBox="0 0 600 360">
-                <defs>
-                  <linearGradient id="airfoil-skin-wb" x1="0%" y1="0%" x2="100%" y2="80%">
-                    <stop offset="0%" stopColor="#1e2023" />
-                    <stop offset="35%" stopColor="#282a2d" />
-                    <stop offset="70%" stopColor="#1e2023" />
-                    <stop offset="100%" stopColor="#0c0e11" />
-                  </linearGradient>
-                </defs>
-
-                {/* Extruded Depth Shadow */}
-                <path
-                  d="M 120 180 C 180 80, 360 100, 520 150 L 460 210 C 310 160, 150 140, 100 220 Z"
-                  fill="#14171a"
-                  opacity="0.6"
-                />
-
-                {/* NACA 0012 Camber Surface */}
-                <path
-                  d="M 80 190 C 140 100, 320 115, 480 165 C 500 171, 510 174, 515 176 L 475 220 C 340 190, 180 230, 80 190 Z"
-                  fill="url(#airfoil-skin-wb)"
-                  stroke="#404754"
-                  strokeWidth="1.5"
-                />
-
-                {/* Computational Mesh Isolines */}
-                <path d="M 110 175 C 160 115, 300 128, 440 172" fill="none" stroke="#3491ff" strokeDasharray="2 2" strokeOpacity="0.5" />
-                <path d="M 140 165 C 190 125, 310 138, 410 180" fill="none" stroke="#3491ff" strokeDasharray="2 2" strokeOpacity="0.5" />
-                <path d="M 90 200 C 180 205, 330 185, 475 220" fill="none" stroke="#00daf3" strokeOpacity="0.4" />
-
-                {/* Spanwise Structured Grid */}
-                <line x1="160" y1="135" x2="140" y2="198" stroke="#a8c8ff" strokeOpacity="0.4" strokeWidth="1" />
-                <line x1="220" y1="130" x2="205" y2="192" stroke="#a8c8ff" strokeOpacity="0.4" strokeWidth="1" />
-                <line x1="280" y1="132" x2="270" y2="188" stroke="#a8c8ff" strokeOpacity="0.4" strokeWidth="1" />
-                <line x1="340" y1="140" x2="335" y2="182" stroke="#a8c8ff" strokeOpacity="0.4" strokeWidth="1" />
-                <line x1="400" y1="150" x2="395" y2="180" stroke="#a8c8ff" strokeOpacity="0.4" strokeWidth="1" />
-
-                {/* Inlet Vectors */}
-                <g opacity="0.9">
-                  <line x1="30" y1="160" x2="70" y2="175" stroke="#00daf3" strokeWidth="2" />
-                  <polygon points="70,172 78,175 70,178" fill="#00daf3" />
-                  <line x1="30" y1="190" x2="70" y2="190" stroke="#00daf3" strokeWidth="2" />
-                  <polygon points="70,187 78,190 70,193" fill="#00daf3" />
-                  <line x1="30" y1="220" x2="70" y2="205" stroke="#00daf3" strokeWidth="2" />
-                  <polygon points="70,202 78,205 70,208" fill="#00daf3" />
-                  <text x="25" y="145" fill="#00daf3" fontFamily="JetBrains Mono" fontSize="10" letterSpacing="0.5">
-                    U_inlet = {inletVelX} m/s
-                  </text>
-                </g>
-
-                {/* Trailing Edge Wake */}
-                <g fill="none" stroke="#ffb68b" strokeDasharray="1 3" strokeOpacity="0.6">
-                  <path d="M 515 176 C 540 178, 570 170, 590 165" />
-                  <path d="M 515 176 C 540 182, 570 188, 590 195" />
-                </g>
-
-                {/* Chord markers */}
-                <circle cx="80" cy="190" r="3" fill="#3491ff" />
-                <text x="88" y="193" fill="#a8c8ff" fontFamily="JetBrains Mono" fontSize="9">LE (Chord 0.0%)</text>
-                <circle cx="515" cy="176" r="3" fill="#ffb68b" />
-                <text x="475" y="160" fill="#ffb68b" fontFamily="JetBrains Mono" fontSize="9">TE (Chord 100%)</text>
-              </svg>
-
-              {/* Direct Probe Tag Overlay */}
-              <div className="absolute top-10 left-20 bg-[#1e2023]/90 backdrop-blur-sm px-2 py-1 rounded shadow-md border border-[#282a2d] pointer-events-none font-mono text-[10px] text-[#a8c8ff]">
-                Face #101: Cp = -1.342
-              </div>
-            </div>
+          {/* Real WebGL 3D Viewport (replaces a previous static SVG airfoil
+              illustration that was labeled "GL_RENDERER: WebGL2 Canvas" /
+              "FPS: 60.0" despite containing no canvas element at all - the
+              same fake-telemetry pattern fixed elsewhere in this codebase.
+              Uses the shared demo-cube geometry until a project has real
+              imported/solved geometry to show; genuinely orbit/zoom/pan-able
+              via OrbitControls, and shadingMode/cameraPreset below are real
+              props, not decorative state. */}
+          <div className="relative w-full h-full select-none overflow-hidden">
+            <Viewer3D
+              geometryUrl="/assets/demo-cube.stl"
+              displayMode={viewerDisplayMode}
+              cameraPreset={cameraPreset}
+              emptyStateLabel="No geometry loaded"
+            />
 
             {/* Top-Right 3D ViewCube & Triad */}
             <div className="absolute top-4 right-4 z-30 flex flex-col items-center gap-2">
               {/* 3D Isometric ViewCube */}
               <div className="w-16 h-16 relative bg-[#1e2023] shadow-2xl rounded border border-[#282a2d] flex items-center justify-center overflow-hidden">
                 <div className="absolute inset-0 grid grid-cols-2 grid-rows-2 p-1 gap-1 font-mono text-[9px] font-bold">
-                  <button className="bg-[#282a2d] text-[#c0c6d6] hover:bg-[#3491ff] hover:text-white flex items-center justify-center">
+                  <button
+                    onClick={() => setCameraPreset('top')}
+                    className={`flex items-center justify-center cursor-pointer ${cameraPreset === 'top' ? 'bg-[#3491ff] text-white' : 'bg-[#282a2d] text-[#c0c6d6] hover:bg-[#3491ff] hover:text-white'}`}
+                  >
                     TOP
                   </button>
-                  <button className="bg-[#282a2d] text-[#c0c6d6] hover:bg-[#3491ff] hover:text-white flex items-center justify-center">
+                  <button
+                    onClick={() => setCameraPreset('front')}
+                    className={`flex items-center justify-center cursor-pointer ${cameraPreset === 'front' ? 'bg-[#3491ff] text-white' : 'bg-[#282a2d] text-[#c0c6d6] hover:bg-[#3491ff] hover:text-white'}`}
+                  >
                     FRT
                   </button>
-                  <button className="bg-[#282a2d] text-[#c0c6d6] hover:bg-[#3491ff] hover:text-white flex items-center justify-center">
+                  <button
+                    onClick={() => setCameraPreset('right')}
+                    className={`flex items-center justify-center cursor-pointer ${cameraPreset === 'right' ? 'bg-[#3491ff] text-white' : 'bg-[#282a2d] text-[#c0c6d6] hover:bg-[#3491ff] hover:text-white'}`}
+                  >
                     RGT
                   </button>
-                  <button className="bg-[#3491ff]/20 text-[#a8c8ff] hover:bg-[#3491ff] hover:text-white flex items-center justify-center">
+                  <button
+                    onClick={() => setCameraPreset('iso')}
+                    className={`flex items-center justify-center cursor-pointer ${cameraPreset === 'iso' ? 'bg-[#3491ff] text-white' : 'bg-[#3491ff]/20 text-[#a8c8ff] hover:bg-[#3491ff] hover:text-white'}`}
+                  >
                     ISO
                   </button>
                 </div>
@@ -785,8 +732,8 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
 
           <div className="flex items-center gap-2 text-[#8a919f] text-[9px]">
             <span className="flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#00daf3]" />
-              <span>Process ID: 8492</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-[#8a919f]" />
+              <span>No active run in this panel</span>
             </span>
           </div>
         </div>
@@ -794,92 +741,44 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
         {/* Tab Content */}
         <div className="flex-1 overflow-hidden p-2.5 bg-[#0c0e11] text-[11px]">
           {bottomTab === 'terminal' && (
-            <div className="h-full overflow-y-auto flex flex-col gap-0.5 font-mono text-[10px] leading-relaxed text-[#c0c6d6]">
-              <div className="text-[#8a919f]">[00:00:01] Preparing numerical simulation setup (OpenFOAM solver binary is not yet implemented)...</div>
-              <div className="text-white">[00:00:02] Loading mesh domain 'Aero_Foil_Transonic_Study.msh' via Gmsh...</div>
-              <div className="text-[#00daf3]">[00:00:03] Boundary tags confirmed: Inlet (104), Outlet (108), Wall (101, 102), Symmetry (105, 106)</div>
-              <div className="text-[#ffdd00]">[00:00:04] Note: Direct OpenFOAM solver integration is planned. Analytical fluid mechanics active.</div>
-              <div className="text-white flex items-center gap-3">
-                <span>Domain: Re 3.2e+06</span>
-                <span>Swamee-Jain f: 0.0162</span>
-                <span>Continuity: 100% Mass Conserved</span>
+            <div className="h-full overflow-y-auto flex flex-col gap-1.5 font-mono text-[10px] leading-relaxed text-[#c0c6d6] items-start justify-center">
+              <div className="text-[#8a919f]">
+                This panel is a static preview and is not wired to a live solver process.
               </div>
-              <div className="text-[#3491ff] flex items-center gap-1">
-                <span className="w-1.5 h-1.5 bg-[#3491ff]" />
-                <span>Analytical solution pipeline active. Native OpenFOAM daemon not yet connected.</span>
+              <div className="text-[#8a919f]">
+                For a real, live-streaming CFD run (real OpenFOAM subprocess output over
+                WebSocket), use the Solver Monitor view instead.
               </div>
             </div>
           )}
 
           {bottomTab === 'residuals' && (
-            <div className="h-full flex items-center justify-between px-3 gap-4">
-              <div className="flex flex-col gap-1">
-                <span className="text-[11px] text-white font-bold">Convergence Residual History</span>
-                <div className="flex items-center gap-2 text-[9px]">
-                  <span className="flex items-center gap-1 text-[#3491ff]"><span className="w-2 h-0.5 bg-[#3491ff]" /> Ux (10⁻⁴)</span>
-                  <span className="flex items-center gap-1 text-[#00daf3]"><span className="w-2 h-0.5 bg-[#00daf3]" /> Uy (10⁻⁴)</span>
-                  <span className="flex items-center gap-1 text-[#ffb68b]"><span className="w-2 h-0.5 bg-[#ffb68b]" /> p (10⁻⁴)</span>
-                  <span className="flex items-center gap-1 text-[#a8c8ff]"><span className="w-2 h-0.5 bg-[#a8c8ff]" /> k/ω (10⁻⁵)</span>
-                </div>
-                <span className="text-[#8a919f] text-[9px]">Criterion threshold: 1.00e-05</span>
-              </div>
-
-              <div className="flex-1 h-20 bg-[#1e2023] rounded p-1 relative border border-[#282a2d]">
-                <svg className="w-full h-full" viewBox="0 0 500 100" preserveAspectRatio="none">
-                  <line x1="0" y1="20" x2="500" y2="20" stroke="#333538" strokeDasharray="2 2" />
-                  <line x1="0" y1="50" x2="500" y2="50" stroke="#333538" strokeDasharray="2 2" />
-                  <line x1="0" y1="80" x2="500" y2="80" stroke="#333538" strokeDasharray="2 2" />
-                  <polyline points="0,15 50,28 100,42 160,56 220,68 300,75 400,82 500,88" fill="none" stroke="#3491ff" strokeWidth="1.8" />
-                  <polyline points="0,20 60,35 120,48 200,62 310,74 410,80 500,86" fill="none" stroke="#00daf3" strokeWidth="1.8" />
-                  <polyline points="0,10 70,30 140,46 220,59 320,65 420,72 500,79" fill="none" stroke="#ffb68b" strokeWidth="1.8" />
-                  <polyline points="0,30 80,45 150,55 240,68 350,82 450,91 500,94" fill="none" stroke="#a8c8ff" strokeDasharray="3 2" strokeWidth="1.5" />
-                </svg>
+            <div className="h-full flex items-center justify-center px-3 gap-4">
+              <div className="flex flex-col gap-1.5 items-center text-center">
+                <span className="text-[11px] text-white font-bold">No residual history to display</span>
+                <span className="text-[9px] text-[#8a919f] max-w-md">
+                  This static panel does not run a solver. Real, live residual curves parsed
+                  from an actual CalculiX/OpenFOAM subprocess are available in the Solver
+                  Monitor view.
+                </span>
               </div>
             </div>
           )}
 
           {bottomTab === 'mesh' && (
-            <div className="h-full grid grid-cols-4 gap-2 font-mono text-[10px]">
-              <div className="bg-[#1e2023] p-2 rounded border border-[#282a2d] flex flex-col justify-between">
-                <span className="text-[#8a919f] text-[9px] uppercase">Min Orthogonal Quality</span>
-                <span className="text-[16px] text-[#00daf3] font-bold">0.824</span>
-                <span className="text-[#00daf3] text-[9px]">EXCELLENT (&gt; 0.15)</span>
-              </div>
-              <div className="bg-[#1e2023] p-2 rounded border border-[#282a2d] flex flex-col justify-between">
-                <span className="text-[#8a919f] text-[9px] uppercase">Max Skewness</span>
-                <span className="text-[16px] text-[#a8c8ff] font-bold">0.281</span>
-                <span className="text-[#a8c8ff] text-[9px]">ACCEPTABLE (&lt; 0.85)</span>
-              </div>
-              <div className="bg-[#1e2023] p-2 rounded border border-[#282a2d] flex flex-col justify-between">
-                <span className="text-[#8a919f] text-[9px] uppercase">Max Aspect Ratio</span>
-                <span className="text-[16px] text-[#ffb68b] font-bold">18.4</span>
-                <span className="text-[#ffb68b] text-[9px]">INFLATION BOUNDARY</span>
-              </div>
-              <div className="bg-[#1e2023] p-2 rounded border border-[#282a2d] flex flex-col justify-between">
-                <span className="text-[#8a919f] text-[9px] uppercase">Total Cells</span>
-                <span className="text-[16px] text-white font-bold">448,210</span>
-                <span className="text-[#8a919f] text-[9px]">Gmsh 4.11 Engine</span>
-              </div>
+            <div className="h-full flex items-center justify-center text-center">
+              <span className="text-[10px] text-[#8a919f] max-w-md">
+                No mesh has been generated in this session yet. Mesh quality metrics will
+                appear here once a real mesh is produced.
+              </span>
             </div>
           )}
 
           {bottomTab === 'events' && (
-            <div className="h-full overflow-y-auto flex flex-col gap-1 text-[10px] text-[#c0c6d6]">
-              <div className="flex items-center gap-2">
-                <span className="text-[#8a919f]">[14:02:11.890]</span>
-                <span className="text-[#00daf3]">SYS_CAD:</span>
-                <span>OpenCASCADE topology validated. 6 faces, 12 edges, 8 vertices.</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[#8a919f]">[14:02:12.102]</span>
-                <span className="text-[#a8c8ff]">PERSIST_ID:</span>
-                <span>Persistent IDs mapped successfully (4/4 tags synchronized with topology hash).</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[#8a919f]">[14:02:12.441]</span>
-                <span className="text-[#00daf3]">GMSH_INIT:</span>
-                <span>Gmsh ready. Mesh generation pipeline queued for Phase 2 synthesis.</span>
-              </div>
+            <div className="h-full flex items-center justify-center text-center">
+              <span className="text-[10px] text-[#8a919f] max-w-md">
+                No events logged yet in this session.
+              </span>
             </div>
           )}
         </div>

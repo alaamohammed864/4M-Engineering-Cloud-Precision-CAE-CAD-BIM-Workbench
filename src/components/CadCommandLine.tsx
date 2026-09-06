@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Terminal, Send, ChevronRight, CornerDownLeft, Sparkles } from 'lucide-react';
+import { Terminal, CornerDownLeft } from 'lucide-react';
 
 interface CadCommandLineProps {
   onExecuteCommand?: (cmd: string) => void;
