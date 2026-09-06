@@ -673,38 +673,40 @@ export const BimMepView: React.FC = () => {
               </div>
             </div>
 
-            {/* Right: Selected Equipment Schedule */}
+            {/* Right: Selected Equipment Schedule — badges below are now
+                REAL: each unit's PASS/FAIL is computed live against
+                totalCoolingKw from the actual load calculation on the
+                left, instead of being hardcoded regardless of input. */}
             <div className="bg-[#1a1c1f] p-3 rounded border border-[#282a2d] flex flex-col gap-3 shadow-md">
               <span className="font-bold text-white text-[12px] border-b border-[#282a2d] pb-2">
                 HVAC Equipment Selection
               </span>
 
               <div className="flex flex-col gap-2 text-[10px]">
-                <div className="bg-[#1e2023] p-2 rounded border border-[#282a2d] flex flex-col gap-1">
-                  <div className="flex justify-between font-bold text-[#00daf3]">
-                    <span>FCU-L01-01 (Fan Coil Unit)</span>
-                    <span>PASS</span>
-                  </div>
-                  <div className="text-[#8a919f]">Cooling: 14.5 kW | Airflow: 2,450 m³/h | ESP: 75 Pa</div>
-                  <div className="text-[#c0c6d6]">Refrigerant: R410A / EC Brushless Motor</div>
-                </div>
-
-                <div className="bg-[#1e2023] p-2 rounded border border-[#282a2d] flex flex-col gap-1">
-                  <div className="flex justify-between font-bold text-[#a8c8ff]">
-                    <span>AHU-ROOF-01 (Air Handling Unit)</span>
-                    <span>PASS</span>
-                  </div>
-                  <div className="text-[#8a919f]">Cooling: 120 kW | Airflow: 18,000 m³/h | Heat Recovery 78%</div>
-                  <div className="text-[#c0c6d6]">VAV Inverter Fan / F7+H13 Filtration</div>
-                </div>
-
-                <div className="bg-[#1e2023] p-2 rounded border border-[#282a2d] flex flex-col gap-1">
-                  <div className="flex justify-between font-bold text-[#34c759]">
-                    <span>CHILLER-01 (Air-Cooled Screw)</span>
-                    <span>PASS</span>
-                  </div>
-                  <div className="text-[#8a919f]">Capacity: 250 TR (880 kW) | COP: 3.42 | Refrigerant R1234ze</div>
-                  <div className="text-[#c0c6d6]">Dual Variable-Speed Compressors</div>
+                {(() => {
+                  const units = [
+                    { id: 'FCU-L01-01 (Fan Coil Unit)', capacityKw: 14.5, spec: 'Airflow: 2,450 m³/h | ESP: 75 Pa', detail: 'Refrigerant: R410A / EC Brushless Motor', color: '#00daf3' },
+                    { id: 'AHU-ROOF-01 (Air Handling Unit)', capacityKw: 120, spec: 'Airflow: 18,000 m³/h | Heat Recovery 78%', detail: 'VAV Inverter Fan / F7+H13 Filtration', color: '#a8c8ff' },
+                    { id: 'CHILLER-01 (Air-Cooled Screw)', capacityKw: 880, spec: 'Capacity: 250 TR (880 kW) | COP: 3.42 | Refrigerant R1234ze', detail: 'Dual Variable-Speed Compressors', color: '#34c759' },
+                  ];
+                  return units.map((u) => {
+                    const passes = u.capacityKw >= totalCoolingKw;
+                    return (
+                      <div key={u.id} className="bg-[#1e2023] p-2 rounded border border-[#282a2d] flex flex-col gap-1">
+                        <div className="flex justify-between font-bold" style={{ color: u.color }}>
+                          <span>{u.id}</span>
+                          <span className={passes ? 'text-[#34c759]' : 'text-[#ff6b6b]'}>
+                            {passes ? 'PASS' : 'FAIL'} ({(u.capacityKw - totalCoolingKw).toFixed(1)} kW margin)
+                          </span>
+                        </div>
+                        <div className="text-[#8a919f]">Cooling: {u.capacityKw} kW | {u.spec}</div>
+                        <div className="text-[#c0c6d6]">{u.detail}</div>
+                      </div>
+                    );
+                  });
+                })()}
+                <div className="text-[9px] text-[#8a919f] italic pt-1">
+                  Evaluated against calculated total load: <span className="text-white font-bold">{totalCoolingKw.toFixed(2)} kW</span> (changes live with the inputs on the left)
                 </div>
               </div>
             </div>

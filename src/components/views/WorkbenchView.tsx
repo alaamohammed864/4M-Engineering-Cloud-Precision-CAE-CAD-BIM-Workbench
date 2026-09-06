@@ -40,6 +40,7 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
   const [boundaryOpen, setBoundaryOpen] = useState(true);
   const [meshOpen, setMeshOpen] = useState(true);
   const [inspectorMaximized, setInspectorMaximized] = useState(false);
+  const [selectedFeature, setSelectedFeature] = useState<string | null>(null);
 
   // Inspector inputs
   const [inletVelX, setInletVelX] = useState('45.0');
@@ -157,7 +158,12 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
 
                 {/* Children Elements */}
                 <div className="mt-1.5 pl-3 flex flex-col gap-1 border-l border-[#404754]/50 ml-2">
-                  <div className="flex items-center justify-between p-1 bg-[#1e2023] rounded-sm hover:bg-[#37393d] cursor-pointer">
+                  <div
+                    onClick={() => setSelectedFeature('2D Sketch 1 (XY Plane)')}
+                    className={`flex items-center justify-between p-1 rounded-sm cursor-pointer ${
+                      selectedFeature === '2D Sketch 1 (XY Plane)' ? 'bg-[#3491ff]/25 border border-[#3491ff]' : 'bg-[#1e2023] hover:bg-[#37393d] border border-transparent'
+                    }`}
+                  >
                     <div className="flex items-center gap-1.5 truncate">
                       <span className="w-1.5 h-1.5 rounded-full bg-[#00daf3]" />
                       <span className="truncate text-white text-[10px]">2D Sketch 1 (XY Plane)</span>
@@ -165,7 +171,12 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
                     <span className="text-[8px] text-[#00daf3] px-1 bg-[#111316] rounded">FULLY CONSTRAINED</span>
                   </div>
 
-                  <div className="flex items-center justify-between p-1 bg-[#1e2023] rounded-sm hover:bg-[#37393d] cursor-pointer">
+                  <div
+                    onClick={() => setSelectedFeature('Extrude 1')}
+                    className={`flex items-center justify-between p-1 rounded-sm cursor-pointer ${
+                      selectedFeature === 'Extrude 1' ? 'bg-[#3491ff]/25 border border-[#3491ff]' : 'bg-[#1e2023] hover:bg-[#37393d] border border-transparent'
+                    }`}
+                  >
                     <div className="flex items-center gap-1.5 truncate">
                       <span className="w-1.5 h-1.5 rounded-full bg-[#8a919f]" />
                       <span className="truncate text-white text-[10px]">Extrude 1</span>
@@ -173,7 +184,12 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
                     <span className="text-[9px] text-[#c0c6d6]">120.0 mm</span>
                   </div>
 
-                  <div className="flex items-center justify-between p-1 bg-[#1e2023] rounded-sm hover:bg-[#37393d] cursor-pointer">
+                  <div
+                    onClick={() => setSelectedFeature('Chamfer 1 (Trailing edge)')}
+                    className={`flex items-center justify-between p-1 rounded-sm cursor-pointer ${
+                      selectedFeature === 'Chamfer 1 (Trailing edge)' ? 'bg-[#3491ff]/25 border border-[#3491ff]' : 'bg-[#1e2023] hover:bg-[#37393d] border border-transparent'
+                    }`}
+                  >
                     <div className="flex items-center gap-1.5 truncate">
                       <span className="w-1.5 h-1.5 rounded-full bg-[#ffb68b]" />
                       <span className="truncate text-white text-[10px]">Chamfer 1 (Trailing edge)</span>
@@ -182,6 +198,12 @@ export const WorkbenchView: React.FC<WorkbenchViewProps> = ({
                   </div>
                 </div>
               </div>
+              {selectedFeature && (
+                <div className="mx-1 mt-1 px-2 py-1 bg-[#111316] border border-[#3491ff]/40 rounded text-[9px] text-[#a8c8ff] flex items-center justify-between">
+                  <span>Selected: <strong className="text-white">{selectedFeature}</strong></span>
+                  <button onClick={() => setSelectedFeature(null)} className="text-[#8a919f] hover:text-white cursor-pointer">✕</button>
+                </div>
+              )}
 
               {/* Named Selections Card in Tree View */}
               <div className="mt-2 flex flex-col gap-1">
