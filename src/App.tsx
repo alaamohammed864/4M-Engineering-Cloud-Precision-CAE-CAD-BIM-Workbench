@@ -14,11 +14,13 @@ import { AiCopilotModal } from './components/AiCopilotModal';
 import { ValidationModal } from './components/ValidationModal';
 import { CommandPaletteModal } from './components/CommandPaletteModal';
 import { CadCommandLine } from './components/CadCommandLine';
+import { useAuth } from './lib/auth';
 
 export default function App() {
   const [activeView, setActiveView] = useState<ActiveWorkbenchView>('workbench');
   const [isTreeCollapsed, setIsTreeCollapsed] = useState<boolean>(false);
   const [selectedEntity, setSelectedEntity] = useState<string | null>(null);
+  const auth = useAuth();
   const [isCopilotOpen, setIsCopilotOpen] = useState<boolean>(false);
   const [isValidationOpen, setIsValidationOpen] = useState<boolean>(false);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState<boolean>(false);
@@ -124,6 +126,12 @@ export default function App() {
         onToggleLanguage={() => setLanguage(language === 'en' ? 'ar' : 'en')}
         onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
         onOpenValidation={runValidationAudit}
+        authUser={auth.user}
+        isGuest={auth.isGuest}
+        isBootstrapping={auth.isBootstrapping}
+        onLogin={auth.login}
+        onRegister={auth.register}
+        onLogout={auth.logout}
       />
 
       {/* Guided Mode Info Banner for Beginners */}
@@ -214,6 +222,7 @@ export default function App() {
             <FeaAcceptanceView
               onOpenCopilot={() => setIsCopilotOpen(true)}
               onOpenReport={() => setActiveView('results-and-reports')}
+              authHeaders={auth.authHeaders}
             />
           )}
 

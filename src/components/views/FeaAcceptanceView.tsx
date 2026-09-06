@@ -19,9 +19,10 @@ import { FeaCalculationResult } from '../../types';
 interface FeaAcceptanceViewProps {
   onOpenCopilot?: () => void;
   onOpenReport?: () => void;
+  authHeaders?: () => Record<string, string>;
 }
 
-export const FeaAcceptanceView: React.FC<FeaAcceptanceViewProps> = ({ onOpenCopilot, onOpenReport }) => {
+export const FeaAcceptanceView: React.FC<FeaAcceptanceViewProps> = ({ onOpenCopilot, onOpenReport, authHeaders }) => {
   // Input Parameters
   const [lengthM, setLengthM] = useState<number>(1.0);
   const [widthMm, setWidthMm] = useState<number>(50);
@@ -44,20 +45,46 @@ export const FeaAcceptanceView: React.FC<FeaAcceptanceViewProps> = ({ onOpenCopi
   const executeFeaSolver = async () => {
     setIsSolving(true);
     const mat = materialsConfig[selectedMaterial];
+    const payload = {
+      length: lengthM,
+      width: widthMm / 1000,
+      height: heightMm / 1000,
+      forceY: forceN,
+      youngsModulus: mat.eGpa * 1e9,
+      yieldStrength: mat.yieldMpa * 1e6,
+      poissonRatio: mat.poisson,
+    };
+
+    // Try the REAL CalculiX solver first (Priority 1) - requires
+    // authentication (Priority 5). Falls back to the honestly-labeled
+    // analytical endpoint if the real solver is unavailable/unauthorized,
+    // and only as a last resort to a local JS calculation if the network
+    // itself is unreachable. Every path sets an accurate resultType, and
+    // the UI's "Real CalculiX" badge only ever shows when resultType is
+    // actually 'fem_solver'.
+    try {
+      const realResponse = await fetch('/api/solvers/fea/solve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(authHeaders ? authHeaders() : {}) },
+        body: JSON.stringify(payload),
+      });
+      if (realResponse.ok) {
+        const data = await realResponse.json();
+        setFeaResult(data);
+        setIsSolving(false);
+        return;
+      }
+      // Real solver unavailable/unauthorized/failed (503/502/401/etc) -
+      // fall through to the analytical endpoint below rather than pretend.
+    } catch {
+      // Network error reaching the real solver route - fall through too.
+    }
 
     try {
       const response = await fetch('/api/solvers/analytical-beam-calculator', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          length: lengthM,
-          width: widthMm / 1000,
-          height: heightMm / 1000,
-          forceY: forceN,
-          youngsModulus: mat.eGpa * 1e9,
-          yieldStrength: mat.yieldMpa * 1e6,
-          poissonRatio: mat.poisson,
-        }),
+        body: JSON.stringify(payload),
       });
 
       if (response.ok) {
@@ -122,7 +149,7 @@ export const FeaAcceptanceView: React.FC<FeaAcceptanceViewProps> = ({ onOpenCopi
           status: sf >= 1.5 ? 'STRUCTURALLY_SAFE' : 'YIELD_EXCEEDED_WARNING',
         },
         distribution,
-        provenanceHash: 'analytical_formula_fallback_' + Math.abs(forceN),
+        provenanceHash: 'client_fallback_' + btoa(JSON.stringify(payload)).slice(0, 24),
         timestamp: new Date().toISOString(),
       });
     } finally {

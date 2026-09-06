@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { ActiveWorkbenchView, SolverStatus, UserExperienceMode, AppLanguage } from '../types';
+import type { AuthUser } from '../lib/auth';
 import {
   FolderOpen,
   Bot,
@@ -33,6 +34,12 @@ interface TopBarProps {
   onToggleLanguage: () => void;
   onOpenCommandPalette: () => void;
   onOpenValidation: () => void;
+  authUser: AuthUser | null;
+  isGuest: boolean;
+  isBootstrapping: boolean;
+  onLogin: (email: string, password: string) => Promise<void>;
+  onRegister: (email: string, password: string) => Promise<void>;
+  onLogout: () => void;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -49,8 +56,36 @@ export const TopBar: React.FC<TopBarProps> = ({
   onToggleLanguage,
   onOpenCommandPalette,
   onOpenValidation,
+  authUser,
+  isGuest,
+  isBootstrapping,
+  onLogin,
+  onRegister,
+  onLogout,
 }) => {
   const isArabic = language === 'ar';
+  const [showAuthPopover, setShowAuthPopover] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authBusy, setAuthBusy] = useState(false);
+
+  const handleAuthSubmit = async () => {
+    setAuthError(null);
+    setAuthBusy(true);
+    try {
+      if (authMode === 'login') await onLogin(authEmail, authPassword);
+      else await onRegister(authEmail, authPassword);
+      setShowAuthPopover(false);
+      setAuthEmail('');
+      setAuthPassword('');
+    } catch (e: any) {
+      setAuthError(e.message || 'Authentication failed');
+    } finally {
+      setAuthBusy(false);
+    }
+  };
 
   return (
     <header className="fixed top-0 left-0 w-full z-50 flex flex-col bg-[#0c0e11] shadow-[0_4px_16px_rgba(0,0,0,0.65)] select-none font-mono">
@@ -171,9 +206,74 @@ export const TopBar: React.FC<TopBarProps> = ({
             </div>
           </div>
 
-          {/* User Account Avatar */}
-          <div className="w-6 h-6 rounded-full bg-[#282a2d] border border-[#37393d] flex items-center justify-center text-[#a8c8ff] font-bold text-xs shadow">
-            <User className="w-3.5 h-3.5 text-[#a8c8ff]" />
+          {/* User Account / Auth — real login, not a decorative avatar */}
+          <div className="relative">
+            <button
+              onClick={() => setShowAuthPopover((v) => !v)}
+              className="w-6 h-6 rounded-full bg-[#282a2d] border border-[#37393d] flex items-center justify-center text-[#a8c8ff] font-bold text-xs shadow cursor-pointer hover:border-[#3491ff]"
+              title={authUser ? `Signed in as ${authUser.email} (${authUser.role})` : 'Sign in'}
+            >
+              <User className="w-3.5 h-3.5 text-[#a8c8ff]" />
+              {authUser && !isGuest && (
+                <span className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#34c759] border border-[#1a1c1f]" />
+              )}
+            </button>
+
+            {showAuthPopover && (
+              <div className="absolute right-0 top-8 z-50 w-64 bg-[#1a1c1f] border border-[#282a2d] rounded shadow-xl p-3 text-[11px]">
+                {authUser ? (
+                  <div className="flex flex-col gap-2">
+                    <div className="text-[#8a919f]">Signed in as</div>
+                    <div className="text-white font-bold truncate">{authUser.email}</div>
+                    <div className="text-[9px] text-[#00daf3]">{authUser.role}{isGuest ? ' (guest session)' : ''}</div>
+                    {isGuest && (
+                      <div className="text-[9px] text-[#8a919f] italic">
+                        Auto-created guest account so solver runs work immediately. Sign in with a real account to keep your projects.
+                      </div>
+                    )}
+                    <button
+                      onClick={() => { onLogout(); setShowAuthPopover(false); }}
+                      className="mt-1 px-2 py-1 bg-[#282a2d] hover:bg-[#37393d] text-white rounded cursor-pointer"
+                    >
+                      Sign Out
+                    </button>
+                  </div>
+                ) : isBootstrapping ? (
+                  <div className="text-[#8a919f]">Signing in...</div>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    <div className="flex gap-1 text-[10px]">
+                      <button
+                        onClick={() => setAuthMode('login')}
+                        className={`flex-1 py-1 rounded cursor-pointer ${authMode === 'login' ? 'bg-[#3491ff] text-white' : 'bg-[#282a2d] text-[#8a919f]'}`}
+                      >Sign In</button>
+                      <button
+                        onClick={() => setAuthMode('register')}
+                        className={`flex-1 py-1 rounded cursor-pointer ${authMode === 'register' ? 'bg-[#3491ff] text-white' : 'bg-[#282a2d] text-[#8a919f]'}`}
+                      >Register</button>
+                    </div>
+                    <input
+                      type="email" placeholder="Email" value={authEmail}
+                      onChange={(e) => setAuthEmail(e.target.value)}
+                      className="bg-[#111316] border border-[#282a2d] rounded px-2 py-1 text-white outline-none focus:border-[#3491ff]"
+                    />
+                    <input
+                      type="password" placeholder="Password (min 8 chars)" value={authPassword}
+                      onChange={(e) => setAuthPassword(e.target.value)}
+                      className="bg-[#111316] border border-[#282a2d] rounded px-2 py-1 text-white outline-none focus:border-[#3491ff]"
+                    />
+                    {authError && <div className="text-[#ff6b6b] text-[9px]">{authError}</div>}
+                    <button
+                      onClick={handleAuthSubmit}
+                      disabled={authBusy || !authEmail || authPassword.length < 8}
+                      className="py-1.5 bg-[#3491ff] hover:bg-[#a8c8ff] hover:text-[#003061] disabled:opacity-40 text-white font-bold rounded cursor-pointer"
+                    >
+                      {authBusy ? '...' : authMode === 'login' ? 'Sign In' : 'Create Account'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
